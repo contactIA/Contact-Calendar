@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🦷 Escala Agenda
+# Escala Agenda
 
 ### Agenda Odontológica White Label com IA Nativa
 
@@ -14,7 +14,7 @@
 
 <br/>
 
-> Plataforma de agendamento clínico **multi-tenant** para clínicas odontológicas.
+> Plataforma de agendamento clínico **multi-tenant** para clínicas odontológicas.  
 > Serve humanos via interface React e **agentes de IA via REST API** — com as mesmas regras de negócio, os mesmos dados e os mesmos slots disponíveis.
 
 <br/>
@@ -23,19 +23,21 @@
 
 ---
 
-## 🧩 O que este produto resolve
+## O que este produto resolve
 
 <table>
 <tr>
 <td width="50%">
 
-### 👩‍💼 Para humanos
+**Para humanos**
+
 Recepcionistas, dentistas e gestores acessam via **interface React** com URL parametrizada. Cada papel enxerga exatamente o que precisa — sem configuração de login adicional.
 
 </td>
 <td width="50%">
 
-### 🤖 Para agentes de IA
+**Para agentes de IA**
+
 O agente de WhatsApp consome a mesma **REST API** que a recepcionista usa. Mesmas regras, mesmos dados, mesma proteção contra conflitos — canal diferente.
 
 </td>
@@ -44,21 +46,21 @@ O agente de WhatsApp consome a mesma **REST API** que a recepcionista usa. Mesma
 
 ---
 
-## 🏗️ Arquitetura do Sistema
+## Arquitetura do Sistema
 
 ```mermaid
 flowchart TD
-    P(["👤 Paciente\n(WhatsApp)"])
-    R(["👩‍💼 Recepcionista\n(Browser)"])
+    P(["Paciente\n(WhatsApp)"])
+    R(["Recepcionista\n(Browser)"])
 
-    H["📱 Helena / WTS Chat\nplataforma de mensageria"]
-    UI["🖥️ Interface React\n(em desenvolvimento)"]
+    H["Helena / WTS Chat\nplataforma de mensageria"]
+    UI["Interface React\n(em desenvolvimento)"]
 
-    AI["🤖 Agente de IA\nN8N + OpenAI"]
+    AI["Agente de IA\nN8N + OpenAI"]
 
-    API["⚙️ Escala Agenda — Backend\nNext.js 15 · App Router · TypeScript"]
+    API["Escala Agenda — Backend\nNext.js 15 · App Router · TypeScript"]
 
-    DB[("🗄️ Supabase\nPostgreSQL 17 · RLS · sa-east-1")]
+    DB[("Supabase\nPostgreSQL 17 · RLS · sa-east-1")]
 
     P -->|mensagem| H
     H -->|webhook POST| AI
@@ -75,7 +77,7 @@ flowchart TD
 
 ---
 
-## 🤖 Fluxo Completo do Agente de IA
+## Fluxo Completo do Agente de IA
 
 ```mermaid
 sequenceDiagram
@@ -117,13 +119,13 @@ sequenceDiagram
     DB-->>API: consulta criada
     API-->>AI: { id, start_at, status: "scheduled" }
 
-    AI->>H: sendSessionMessage(sessionId, "Consulta confirmada! ✅")
-    H->>P: "Consulta confirmada! ✅"
+    AI->>H: sendSessionMessage(sessionId, "Consulta confirmada!")
+    H->>P: "Consulta confirmada!"
 ```
 
 ---
 
-## 🗄️ Modelo de Dados
+## Modelo de Dados
 
 ```mermaid
 erDiagram
@@ -180,7 +182,7 @@ erDiagram
     }
 ```
 
-### 🔄 Ciclo de status de uma consulta
+### Ciclo de status de uma consulta
 
 ```mermaid
 stateDiagram-v2
@@ -195,7 +197,7 @@ stateDiagram-v2
 
 ---
 
-## 🔐 Autenticação
+## Autenticação
 
 ```mermaid
 flowchart LR
@@ -217,52 +219,52 @@ flowchart LR
 | Humano | `POST /api/auth/url` | 15 min | Automática via refresh |
 | Agente IA | `POST /api/auth/ai` | 60 min | Agente re-autentica |
 
-> **Segurança:** API Keys são armazenadas com hash bcrypt — texto plano nunca persiste no banco.
+> API Keys são armazenadas com hash bcrypt — texto plano nunca persiste no banco.
 
 ---
 
-## 📡 Endpoints da API
+## Endpoints da API
 
-### 🔑 Autenticação
+### Autenticação
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `POST` | `/api/auth/url` | 🌐 Público | Auth humano via URL → JWT 15min |
-| `POST` | `/api/auth/ai` | 🌐 Público | Auth agente via API Key → JWT 60min |
+| `POST` | `/api/auth/url` | Público | Auth humano via URL → JWT 15min |
+| `POST` | `/api/auth/ai` | Público | Auth agente via API Key → JWT 60min |
 
-### 📅 Agendamento
+### Agendamento
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `GET` | `/api/dentists/priority` | 🔒 Todos | Dentistas priorizados por contexto |
-| `GET` | `/api/slots/available` | 🔒 Todos | Slots livres por dentista/data |
-| `POST` | `/api/appointments/check-conflicts` | 🔒 Todos | Verificação de conflito |
-| `POST` | `/api/appointments` | 🔒 Admin·Recep·IA | Criar consulta |
-| `GET` | `/api/appointments` | 🔒 Todos | Listar consultas (filtros + paginação) |
-| `PATCH` | `/api/appointments/:id/status` | 🔒 Todos¹ | Atualizar status |
+| `GET` | `/api/dentists/priority` | Autenticado | Dentistas priorizados por contexto |
+| `GET` | `/api/slots/available` | Autenticado | Slots livres por dentista/data |
+| `POST` | `/api/appointments/check-conflicts` | Autenticado | Verificação de conflito |
+| `POST` | `/api/appointments` | Admin · Recep · IA | Criar consulta |
+| `GET` | `/api/appointments` | Autenticado | Listar consultas (filtros + paginação) |
+| `PATCH` | `/api/appointments/:id/status` | Autenticado¹ | Atualizar status |
 
-### 👥 Pacientes
+### Pacientes
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `GET` | `/api/patients?q=` | 🔒 Todos | Buscar por nome ou telefone |
-| `POST` | `/api/patients` | 🔒 Admin·Recep·IA | Criar paciente |
+| `GET` | `/api/patients?q=` | Autenticado | Buscar por nome ou telefone |
+| `POST` | `/api/patients` | Admin · Recep · IA | Criar paciente |
 
-### 📲 Helena
+### Helena
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `POST` | `/api/helena/transfer` | 🔒 Todos | Transferir para equipe humana |
+| `POST` | `/api/helena/transfer` | Autenticado | Transferir para equipe humana |
 
 > ¹ IA só pode `cancelled`. Dentista não pode `cancelled` nem `no_show`.
 
 ---
 
-## 📲 Integração Helena (WTS Chat)
+## Integração Helena (WTS Chat)
 
 A Helena é o canal de comunicação com o paciente via WhatsApp. O sistema a usa em três momentos:
 
 ```mermaid
 flowchart LR
-    A["✅ Agendamento\ncriado"] -->|sendSessionMessage| B["Paciente recebe\nconfirmação"]
-    C["❌ Sem slots\ndisponíveis"] -->|transferToTeam| D["Conversa vai\npara recepcionista"]
-    E["🏁 Fluxo\nencerrado"] -->|completeSession| F["Atendimento\nconcluído"]
+    A["Agendamento\ncriado"] -->|sendSessionMessage| B["Paciente recebe\nconfirmação"]
+    C["Sem slots\ndisponíveis"] -->|transferToTeam| D["Conversa vai\npara recepcionista"]
+    E["Fluxo\nencerrado"] -->|completeSession| F["Atendimento\nconcluído"]
 ```
 
 ```typescript
@@ -275,7 +277,7 @@ completeSession(sessionId)            // encerrar atendimento
 
 ---
 
-## ⚙️ Configuração
+## Configuração
 
 ### Variáveis de ambiente
 
@@ -283,7 +285,7 @@ completeSession(sessionId)            // encerrar atendimento
 # Supabase — projeto: escala-agenda | região: sa-east-1 (São Paulo)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>      # ⚠️ nunca no frontend
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>      # nunca no frontend
 
 # JWT — gere com: openssl rand -base64 32
 JWT_SECRET=<random-base64-32>
@@ -305,20 +307,20 @@ npm run dev                   # → http://localhost:3000
 
 ---
 
-## 🛡️ Segurança
+## Segurança
 
 | Risco | Mitigação |
 |-------|-----------|
-| 🔄 Double booking concorrente | Re-verificação atômica com lock no `POST /api/appointments` |
-| 🏢 Cross-tenant data leak | `account_id` em todas as queries + RLS no Supabase como 2ª linha |
-| 🔑 API Key vazada | Armazenada com bcrypt hash — texto plano nunca persiste |
-| 🎭 JWT adulterado | HS256 com `JWT_SECRET`, verificado em cada request |
-| ☠️ `service_role` exposto | Só existe em API Routes server-side, nunca em variável `NEXT_PUBLIC_` |
-| 📋 Dados em logs | Nenhum campo sensível (`phone`, `email`, `name`) é logado |
+| Double booking concorrente | Re-verificação atômica com lock no `POST /api/appointments` |
+| Cross-tenant data leak | `account_id` em todas as queries + RLS no Supabase como 2ª linha |
+| API Key vazada | Armazenada com bcrypt hash — texto plano nunca persiste |
+| JWT adulterado | HS256 com `JWT_SECRET`, verificado em cada request |
+| `service_role` exposto | Só existe em API Routes server-side, nunca em variável `NEXT_PUBLIC_` |
+| Dados de pacientes em logs | Nenhum campo sensível (`phone`, `email`, `name`) é logado |
 
 ---
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 escala-agenda/
@@ -351,45 +353,38 @@ escala-agenda/
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 ```mermaid
 gantt
-    title Roadmap Escala Agenda
+    title Roadmap Escala Agenda — Entrega Mai/2026
     dateFormat  YYYY-MM-DD
-    section ✅ Fase 1 · Backend Core
+    section Fase 1 · Backend Core
     Schema Supabase (13 tabelas, RLS)     :done, 2026-05-19, 1d
     Funções PG (slots + conflitos)        :done, 2026-05-19, 1d
     9 endpoints REST                      :done, 2026-05-19, 1d
     Integração Helena                     :done, 2026-05-19, 1d
 
-    section 🔲 Fase 2 · Admin APIs
-    CRUD unidades, cadeiras, dentistas    :active, 2026-05-20, 3d
-    Horários de trabalho + bloqueios      :2026-05-23, 2d
-    Prioridades + API Keys                :2026-05-25, 2d
+    section Fase 2 · Admin APIs
+    CRUD unidades, cadeiras, dentistas    :active, 2026-05-20, 2d
+    Horários de trabalho + bloqueios      :2026-05-22, 2d
+    Prioridades + API Keys                :2026-05-24, 1d
 
-    section 🔲 Fase 3 · Deploy
-    Vercel + env produção                 :2026-05-27, 1d
+    section Fase 3 · Deploy
+    Vercel + env produção                 :2026-05-25, 1d
 
-    section 🔲 Fase 4 · Interface React
-    Visão diária (colunas por dentista)   :2026-05-28, 5d
-    Visão semanal + lista                 :2026-06-02, 3d
-    Theming white label                   :2026-06-05, 2d
-
-    section 🔲 Fase 5 · V2/V3
-    Webhooks de eventos                   :2026-06-10, 3d
-    Lembretes via Helena                  :2026-06-13, 2d
-    Portal do paciente (auto-agendamento) :2026-06-20, 7d
+    section Fase 4 · Interface React
+    Visão diária (colunas por dentista)   :2026-05-26, 3d
+    Visão semanal + lista de consultas    :2026-05-29, 2d
+    Theming white label                   :2026-05-31, 1d
 ```
 
 ---
 
-## 🚀 Desenvolvimento local
+## Desenvolvimento local
 
 ```bash
 npm run dev      # servidor em http://localhost:3000
 npm run build    # build de produção
 npx tsc --noEmit # type check
 ```
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
