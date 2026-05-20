@@ -66,12 +66,7 @@ export function useAppointments(filters: Filters) {
 
   const reschedule = useCallback(
     async (id: string, start_at: string, duration_minutes: number) => {
-      const end = new Date(new Date(start_at).getTime() + duration_minutes * 60_000)
-      await api.patch(`/api/appointments/${id}/status`, {
-        status: 'scheduled',
-        start_at,
-        end_at: end.toISOString(),
-      })
+      await api.patch(`/api/appointments/${id}`, { start_at, duration_minutes })
       await fetch()
     },
     [fetch]
