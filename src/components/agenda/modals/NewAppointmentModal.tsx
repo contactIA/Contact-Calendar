@@ -100,8 +100,8 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
   useEffect(() => {
     if (patientQuery.length < 3) { setPatients([]); setSearchDone(false); return }
     const t = setTimeout(() => {
-      api.get<Patient[]>(`/api/patients?q=${encodeURIComponent(patientQuery)}`)
-        .then(r => { setPatients(Array.isArray(r) ? r : []); setSearchDone(true) })
+      api.get<{ data: Patient[] }>(`/api/patients?q=${encodeURIComponent(patientQuery)}`)
+        .then(r => { setPatients(r.data ?? []); setSearchDone(true) })
         .catch(() => { setPatients([]); setSearchDone(true) })
     }, 300)
     return () => clearTimeout(t)
