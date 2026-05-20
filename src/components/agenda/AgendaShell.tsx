@@ -115,6 +115,12 @@ export function AgendaShell() {
     setView('day')
   }, [])
 
+  const handleAppointmentSelect = useCallback((appt: Appointment) => {
+    setDate(new Date(appt.start_at.slice(0, 10) + 'T12:00:00'))
+    setView('day')
+    setPopover({ appt, el: null })
+  }, [])
+
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden">
       {/* Main area */}
@@ -127,6 +133,8 @@ export function AgendaShell() {
           onViewChange={v => { setView(v); setListPage(1) }}
           onNewAppointment={() => { setModalInitial({}); setModalOpen(true) }}
           onSearch={setSearch}
+          searchResults={filteredAppointments}
+          onAppointmentSelect={handleAppointmentSelect}
         />
 
         <KPIStrip appointments={appointments} statusFilter={statusFilter} onStatusFilter={setStatusFilter} />
