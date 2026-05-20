@@ -87,7 +87,7 @@ export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick 
                       {appt.patient?.name ?? '—'}
                     </p>
                     <p className="text-[10px] opacity-70">
-                      {format(new Date(appt.start_at), 'HH:mm')} · {appt.dentist?.user?.name?.split(' ')[0]}
+                      {format(new Date(appt.start_at), 'HH:mm')} · {appt.dentist?.user?.name?.split(' ').slice(0, 2).join(' ')}
                     </p>
                   </button>
                 ))}

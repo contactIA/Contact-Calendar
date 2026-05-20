@@ -11,24 +11,28 @@ const createSchema = z.object({
   notes:      z.string().optional(),
 })
 
-// GET /api/patients?q=nome_ou_telefone
+// GET /api/patients?q=...&page=1&page_size=50
 export const GET = withAuth(async (req, ctx) => {
   const q         = req.nextUrl.searchParams.get('q') ?? ''
-  const limit     = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '10'), 50)
+  const page      = Math.max(1, Number(req.nextUrl.searchParams.get('page') ?? '1'))
+  const page_size = Math.min(Number(req.nextUrl.searchParams.get('page_size') ?? '50'), 100)
+  const from      = (page - 1) * page_size
 
-  if (q.length < 3) return err('q must be at least 3 characters', 400)
+  if (q.length > 0 && q.length < 3) return err('q must be at least 3 characters', 400)
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('patients')
-    .select('id, name, phone, email, birth_date')
+    .select('id, name, phone, email, birth_date, created_at', { count: 'exact' })
     .eq('account_id', ctx.user.accountId)
-    .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
     .order('name')
-    .limit(limit)
+    .range(from, from + page_size - 1)
 
+  if (q.length >= 3) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+
+  const { data, error, count } = await query
   if (error) return err(error.message, 500)
 
-  return ok(data ?? [])
+  return ok({ data: data ?? [], total: count ?? 0, page, page_size })
 })
 
 // POST /api/patients

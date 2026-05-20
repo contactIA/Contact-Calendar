@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   format, addMonths, subMonths, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { type Dentist } from '@/hooks/useDentists'
+import { DayReportModal } from './DayReportModal'
 
 type Props = {
   selectedDate: Date
@@ -14,10 +16,26 @@ type Props = {
   dentists: Dentist[]
   selectedDentistId: string | null
   onDentistChange: (id: string | null) => void
+  appointments: Array<{ status: string; dentist?: { id: string } | null; patient?: { name: string } | null; start_at: string; procedure?: { name: string } | null }>
 }
 
-export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange }: Props) {
+const STATUS_PILLS = [
+  { color: '#3b82f6', bg: '#eff6ff', label: 'Agendado' },
+  { color: '#10b981', bg: '#ecfdf5', label: 'Confirmado' },
+  { color: '#f59e0b', bg: '#fffbeb', label: 'Em atendimento' },
+  { color: '#6b7280', bg: '#f3f4f6', label: 'Concluído' },
+  { color: '#ef4444', bg: '#fef2f2', label: 'Cancelado' },
+]
+
+export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange, appointments }: Props) {
   const [viewMonth, setViewMonth] = useState(new Date(selectedDate))
+  const [reportOpen, setReportOpen] = useState(false)
+  const params = useParams()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const accountId = params?.accountId as string
+  const userId = searchParams?.get('userId') ?? ''
+  const userQuery = userId ? `?userId=${userId}` : ''
 
   // Build calendar grid
   const monthStart = startOfMonth(viewMonth)
@@ -30,36 +48,50 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
   while (d <= gridEnd) { days.push(d); d = addDays(d, 1) }
 
   return (
-    <aside className="w-64 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col">
+    <aside className="w-64 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col overflow-y-auto agenda-scroll">
+
       {/* Dentist filter */}
       <div className="p-4 border-b border-gray-100">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Profissional</p>
-        <select
-          value={selectedDentistId ?? ''}
-          onChange={e => onDentistChange(e.target.value || null)}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-        >
-          <option value="">Todos os profissionais</option>
-          {dentists.map(d => (
-            <option key={d.id} value={d.id}>{d.user?.name ?? d.id}</option>
-          ))}
-        </select>
-
-        {dentists.length > 0 && (
-          <label className="flex items-center gap-2 mt-2 text-xs text-gray-500 cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-green-600"
-              checked={selectedDentistId !== null}
-              onChange={e => onDentistChange(e.target.checked ? (dentists[0]?.id ?? null) : null)}
-            />
-            Só profissionais com agenda no dia
-          </label>
-        )}
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Profissional</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => onDentistChange(null)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors ${
+              selectedDentistId === null
+                ? 'bg-violet-600 text-white border-violet-600'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+            }`}
+          >
+            Todos
+          </button>
+          {dentists.map(d => {
+            const name = d.user?.name ?? d.id
+            const firstName = name.split(' ').slice(0, 2).join(' ')
+            const isSelected = selectedDentistId === d.id
+            return (
+              <button
+                key={d.id}
+                onClick={() => onDentistChange(isSelected ? null : d.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors ${
+                  isSelected
+                    ? 'text-white border-transparent'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                }`}
+                style={isSelected ? { background: d.color ?? '#a855f7', borderColor: d.color ?? '#a855f7' } : {}}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: d.color ?? '#a855f7' }}
+                />
+                {firstName}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Mini calendar */}
-      <div className="p-4 flex-1">
+      <div className="p-4 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => setViewMonth(m => subMonths(m, 1))}
@@ -99,8 +131,8 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
                 className={`
                   w-full aspect-square flex items-center justify-center text-[11px] rounded-full transition-colors
                   ${!isCurrentMonth ? 'text-gray-200' : ''}
-                  ${isSelected ? 'bg-green-600 text-white font-semibold' : ''}
-                  ${todayDay && !isSelected ? 'text-green-600 font-semibold' : ''}
+                  ${isSelected ? 'bg-gradient-to-br from-violet-600 to-rose-500 text-white font-semibold' : ''}
+                  ${todayDay && !isSelected ? 'text-violet-600 font-semibold' : ''}
                   ${isCurrentMonth && !isSelected ? 'hover:bg-gray-100 text-gray-600' : ''}
                 `}
               >
@@ -111,24 +143,58 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
         </div>
       </div>
 
-      {/* Status legend */}
-      <div className="p-4 border-t border-gray-100">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Legenda</p>
-        <div className="space-y-1.5">
-          {[
-            { color: 'bg-blue-200',   label: 'Agendado' },
-            { color: 'bg-green-200',  label: 'Confirmado' },
-            { color: 'bg-yellow-200', label: 'Em atendimento' },
-            { color: 'bg-gray-200',   label: 'Concluído' },
-            { color: 'bg-purple-200', label: 'Bloqueado' },
-          ].map(item => (
-            <div key={item.label} className="flex items-center gap-2">
-              <span className={`w-3 h-3 rounded-sm flex-shrink-0 ${item.color}`} />
-              <span className="text-xs text-gray-600">{item.label}</span>
-            </div>
+      {/* Status legend pills */}
+      <div className="p-4 border-b border-gray-100">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Legenda</p>
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_PILLS.map(item => (
+            <span
+              key={item.label}
+              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold"
+              style={{ background: item.bg, color: item.color }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: item.color }} />
+              {item.label}
+            </span>
           ))}
         </div>
       </div>
+
+      {/* Atalhos rápidos */}
+      <div className="p-4">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Atalhos</p>
+        <div className="space-y-1.5">
+          <button
+            onClick={() => router.push(`/${accountId}/pacientes${userQuery}`)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          >
+            <span className="text-sm">👥</span>
+            Lista de pacientes
+          </button>
+          <button
+            onClick={() => setReportOpen(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          >
+            <span className="text-sm">📊</span>
+            Relatório do dia
+          </button>
+          <button
+            onClick={() => router.push(`/${accountId}/configuracoes${userQuery}`)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          >
+            <span className="text-sm">⚙️</span>
+            Configurações
+          </button>
+        </div>
+      </div>
+
+      <DayReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        date={selectedDate}
+        appointments={appointments}
+        dentists={dentists}
+      />
     </aside>
   )
 }

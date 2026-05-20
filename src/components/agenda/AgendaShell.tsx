@@ -1,33 +1,59 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { format, addDays, subDays, startOfWeek, endOfWeek } from 'date-fns'
+import { useState, useCallback, useMemo } from 'react'
+import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { AgendaHeader } from './AgendaHeader'
 import { AgendaSidebar } from './AgendaSidebar'
+import { KPIStrip } from './KPIStrip'
 import { DailyView } from './views/DailyView'
 import { WeeklyView } from './views/WeeklyView'
 import { ListView } from './views/ListView'
 import { AppointmentPopover } from './AppointmentPopover'
 import { NewAppointmentModal } from './modals/NewAppointmentModal'
+import { RescheduleModal } from './modals/RescheduleModal'
 import { useAppointments, type Appointment } from '@/hooks/useAppointments'
 import { useDentists } from '@/hooks/useDentists'
 
 type View = 'day' | 'week' | 'list'
 
+function getInitials(name: string) {
+  return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
+}
+
 // Column header for dentist names in daily view
-function DailyHeader({ dentists, selectedDentistId }: { dentists: ReturnType<typeof useDentists>['dentists'], selectedDentistId: string | null }) {
+function DailyHeader({
+  dentists,
+  selectedDentistId,
+  appointments,
+}: {
+  dentists: ReturnType<typeof useDentists>['dentists']
+  selectedDentistId: string | null
+  appointments: Appointment[]
+}) {
   const visible = selectedDentistId ? dentists.filter(d => d.id === selectedDentistId) : dentists
   return (
-    <div className="flex border-b border-gray-200 bg-white flex-shrink-0" style={{ minWidth: `${visible.length * 160 + 56}px` }}>
+    <div className="flex border-b border-gray-100 bg-white flex-shrink-0" style={{ minWidth: `${visible.length * 160 + 56}px` }}>
       <div className="w-14 flex-shrink-0 border-r border-gray-100" />
-      {visible.map(d => (
-        <div key={d.id} className="flex-1 min-w-40 py-3 text-center border-r border-gray-100 last:border-0">
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-            <span className="text-xs font-semibold text-gray-700 leading-tight">{d.user?.name ?? '—'}</span>
+      {visible.map(d => {
+        const name = d.user?.name ?? '—'
+        const count = appointments.filter(a => a.dentist?.id === d.id).length
+        return (
+          <div key={d.id} className="flex-1 min-w-40 py-3 px-3 border-r border-gray-100 last:border-0">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
+                style={{ background: d.color ?? 'linear-gradient(135deg,#a855f7,#d946ef)' }}
+              >
+                {getInitials(name)}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-gray-800 truncate leading-tight">{name}</div>
+                <div className="text-[11px] text-gray-400">{count} agend.</div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -36,10 +62,12 @@ export function AgendaShell() {
   const [view, setView]             = useState<View>('day')
   const [date, setDate]             = useState(new Date())
   const [selectedDentistId, setSelectedDentistId] = useState<string | null>(null)
-  const [popover, setPopover]       = useState<{ appt: Appointment; el: HTMLElement | null } | null>(null)
-  const [modalOpen, setModalOpen]   = useState(false)
+  const [popover, setPopover]           = useState<{ appt: Appointment; el: HTMLElement | null } | null>(null)
+  const [modalOpen, setModalOpen]       = useState(false)
   const [modalInitial, setModalInitial] = useState<{ dentistId?: string; date?: string; time?: string }>({})
-  const [listPage, setListPage]     = useState(1)
+  const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
+  const [listPage, setListPage]         = useState(1)
+  const [search, setSearch]             = useState('')
 
   const { dentists, loading: loadingDentists } = useDentists()
 
@@ -50,22 +78,24 @@ export function AgendaShell() {
   const filters = view === 'day'
     ? { date: dateStr, dentist_id: selectedDentistId ?? undefined }
     : view === 'week'
-    ? { date: weekStart }  // list view fetches a week range using date filter below
+    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200 }
     : { page: listPage, page_size: 50 }
 
-  // For weekly view we need a wider date range
-  const weekFilters = view === 'week'
-    ? { dentist_id: selectedDentistId ?? undefined }
-    : undefined
+  const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
 
-  const { appointments, total, loading, updateStatus, create } = useAppointments(
-    view === 'week' ? { ...weekFilters } : filters
-  )
+  // For week view, appointments already filtered server-side; just alias
+  const weekAppointments = appointments
 
-  // Filter week appointments client-side
-  const weekAppointments = view === 'week'
-    ? appointments.filter(a => a.start_at >= weekStart && a.start_at <= weekEnd + 'T23:59:59')
-    : appointments
+  // Apply search filter
+  const filteredAppointments = useMemo(() => {
+    if (!search.trim()) return appointments
+    const q = search.toLowerCase()
+    return appointments.filter(a =>
+      a.patient?.name?.toLowerCase().includes(q) ||
+      a.procedure?.name?.toLowerCase().includes(q) ||
+      a.dentist?.user?.name?.toLowerCase().includes(q)
+    )
+  }, [appointments, search])
 
   const handleAppointmentClick = useCallback((appt: Appointment, el: HTMLElement | null) => {
     setPopover({ appt, el })
@@ -83,21 +113,25 @@ export function AgendaShell() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-[#f8fafc] overflow-hidden">
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         <AgendaHeader
           date={date}
           view={view}
+          totalToday={appointments.length}
           onDateChange={setDate}
           onViewChange={v => { setView(v); setListPage(1) }}
           onNewAppointment={() => { setModalInitial({}); setModalOpen(true) }}
+          onSearch={setSearch}
         />
+
+        <KPIStrip appointments={appointments} />
 
         {/* Daily column headers */}
         {view === 'day' && !loadingDentists && (
-          <div className="overflow-x-auto flex-shrink-0 border-b border-gray-200 bg-white">
-            <DailyHeader dentists={dentists} selectedDentistId={selectedDentistId} />
+          <div className="overflow-x-auto flex-shrink-0 bg-white shadow-sm">
+            <DailyHeader dentists={dentists} selectedDentistId={selectedDentistId} appointments={appointments} />
           </div>
         )}
 
@@ -105,7 +139,7 @@ export function AgendaShell() {
         {view === 'day' && (
           <div className="flex-1 overflow-x-auto">
             <DailyView
-              appointments={appointments}
+              appointments={filteredAppointments}
               dentists={dentists}
               selectedDentistId={selectedDentistId}
               date={dateStr}
@@ -144,6 +178,7 @@ export function AgendaShell() {
         dentists={dentists}
         selectedDentistId={selectedDentistId}
         onDentistChange={setSelectedDentistId}
+        appointments={appointments}
       />
 
       {/* Appointment popover */}
@@ -154,12 +189,20 @@ export function AgendaShell() {
           onClose={() => setPopover(null)}
           onStatusChange={(id, status) => updateStatus(id, status)}
           onReschedule={appt => {
-            setModalInitial({ dentistId: appt.dentist?.id, date: format(new Date(appt.start_at), 'yyyy-MM-dd') })
-            setModalOpen(true)
+            setRescheduleAppt(appt)
             setPopover(null)
           }}
         />
       )}
+
+      {/* Reschedule modal */}
+      <RescheduleModal
+        open={rescheduleAppt !== null}
+        appointment={rescheduleAppt}
+        dentists={dentists}
+        onClose={() => setRescheduleAppt(null)}
+        onSaved={() => { setRescheduleAppt(null); refetch() }}
+      />
 
       {/* New appointment modal */}
       <NewAppointmentModal

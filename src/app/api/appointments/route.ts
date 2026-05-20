@@ -18,9 +18,11 @@ const listSchema = z.object({
   dentist_id: z.string().uuid().optional(),
   patient_id: z.string().uuid().optional(),
   date:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date_from:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date_to:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status:     z.string().optional(),
   page:       z.coerce.number().int().positive().default(1),
-  page_size:  z.coerce.number().int().min(1).max(100).default(50),
+  page_size:  z.coerce.number().int().min(1).max(500).default(50),
 })
 
 // GET /api/appointments — lista consultas da conta
@@ -29,7 +31,7 @@ export const GET = withAuth(async (req, ctx) => {
   const parsed = listSchema.safeParse(params)
   if (!parsed.success) return err(parsed.error.issues[0].message, 400)
 
-  const { unit_id, dentist_id, patient_id, date, status, page, page_size } = parsed.data
+  const { unit_id, dentist_id, patient_id, date, date_from, date_to, status, page, page_size } = parsed.data
   const from = (page - 1) * page_size
 
   let query = supabaseAdmin
@@ -56,6 +58,8 @@ export const GET = withAuth(async (req, ctx) => {
       .gte('start_at', `${date}T00:00:00Z`)
       .lte('start_at', `${date}T23:59:59Z`)
   }
+  if (date_from) query = query.gte('start_at', `${date_from}T00:00:00Z`)
+  if (date_to)   query = query.lte('start_at', `${date_to}T23:59:59Z`)
 
   // Dentistas só veem a própria agenda
   if (ctx.user.role === 'dentist') {
