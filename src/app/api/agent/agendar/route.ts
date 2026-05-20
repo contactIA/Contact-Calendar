@@ -82,7 +82,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
         p_chair_id:   chair.id,
         p_start_at:   horario,
         p_end_at:     end_at,
-        p_exclude_id: null,
+        p_exclude_id: undefined,
       })
       if (!conflicts?.length) {
         resolvedChairId = chair.id
@@ -99,7 +99,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
     p_chair_id:   resolvedChairId,
     p_start_at:   horario,
     p_end_at:     end_at,
-    p_exclude_id: null,
+    p_exclude_id: undefined,
   })
 
   if (conflicts?.length) {
