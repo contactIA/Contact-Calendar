@@ -20,18 +20,27 @@ export const GET = withAuth(async (req, ctx) => {
 
   if (q.length > 0 && q.length < 3) return err('q must be at least 3 characters', 400)
 
-  let query = supabaseAdmin
+  // Busca com unaccent (ignora acentos e case) quando há query
+  if (q.length >= 3) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabaseAdmin as any).rpc('search_patients', {
+      p_account_id: ctx.user.accountId,
+      p_query:      q,
+      p_limit:      page_size,
+      p_offset:     from,
+    })
+    if (error) return err(error.message, 500)
+    return ok({ data: data ?? [], total: (data ?? []).length, page, page_size })
+  }
+
+  const { data, error, count } = await supabaseAdmin
     .from('patients')
     .select('id, name, phone, email, birth_date, created_at', { count: 'exact' })
     .eq('account_id', ctx.user.accountId)
     .order('name')
     .range(from, from + page_size - 1)
 
-  if (q.length >= 3) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
-
-  const { data, error, count } = await query
   if (error) return err(error.message, 500)
-
   return ok({ data: data ?? [], total: count ?? 0, page, page_size })
 })
 
