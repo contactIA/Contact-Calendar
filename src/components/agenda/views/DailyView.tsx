@@ -54,29 +54,29 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
 
   return (
     <div ref={gridRef} className="flex-1 overflow-auto agenda-scroll relative">
-      <div className="relative flex" style={{ minWidth: `${visibleDentists.length * 160 + 56}px`, paddingTop: 16 }}>
+      <div className="relative flex" style={{ minWidth: `${visibleDentists.length * 160 + 64}px`, paddingTop: 16 }}>
 
-        {/* Full-width horizontal grid lines — drawn over the entire row including the hour rail */}
+        {/* Full-width horizontal grid lines */}
         <div className="absolute inset-0 pointer-events-none" style={{ height: totalH + 10 }}>
           {hours.map(h => (
             <div key={h}>
               <div
                 className="absolute inset-x-0"
-                style={{ top: (h - HOUR_START) * SLOT_H * 2 + 16, borderTop: '1px solid #cbd5e1' }}
+                style={{ top: (h - HOUR_START) * SLOT_H * 2 + 16, borderTop: '1px solid #94a3b8' }}
               />
               <div
                 className="absolute inset-x-0"
-                style={{ top: (h - HOUR_START) * SLOT_H * 2 + SLOT_H + 16, borderTop: '1px dashed #e2e8f0' }}
+                style={{ top: (h - HOUR_START) * SLOT_H * 2 + SLOT_H + 16, borderTop: '1px dashed #cbd5e1' }}
               />
             </div>
           ))}
         </div>
 
         {/* Hour labels */}
-        <div className="w-14 flex-shrink-0 border-r relative bg-white z-10" style={{ height: totalH, borderColor: '#cbd5e1' }}>
+        <div className="w-16 flex-shrink-0 border-r relative z-10" style={{ height: totalH, background: '#f8fafc', borderColor: '#94a3b8' }}>
           {hours.map(h => (
             <div key={h} style={{ top: (h - HOUR_START) * SLOT_H * 2 }} className="absolute inset-x-0">
-              <span className="absolute right-2 -top-3 text-[11px] text-gray-400 select-none leading-none">
+              <span className="absolute right-2 -top-3 text-[11px] font-semibold text-slate-500 select-none leading-none">
                 {String(h).padStart(2, '0')}:00
               </span>
             </div>
