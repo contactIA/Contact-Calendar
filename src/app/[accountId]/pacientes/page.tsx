@@ -371,14 +371,14 @@ export default function PacientesPage() {
                     <button
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-white border border-gray-200 disabled:opacity-40 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-violet-600 hover:bg-violet-50 border border-violet-200 disabled:opacity-40 transition-colors"
                     >
                       ‹ Anterior
                     </button>
                     <button
                       onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-white border border-gray-200 disabled:opacity-40 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-violet-600 hover:bg-violet-50 border border-violet-200 disabled:opacity-40 transition-colors"
                     >
                       Próximo ›
                     </button>

@@ -356,7 +356,7 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
                 if (creating) { setCreating(false); return }
                 setStep(step === 'time' ? 'details' : 'patient')
               }}
-              className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+              className="flex-1 border border-violet-200 text-violet-600 py-2.5 rounded-xl text-sm font-medium hover:bg-violet-50 transition-colors">
               Voltar
             </button>
           )}
