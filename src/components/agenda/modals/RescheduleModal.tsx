@@ -65,7 +65,7 @@ export function RescheduleModal({ open, appointment, dentists, onClose, onSaved 
     setSaving(true); setError('')
     try {
       await api.patch(`/api/appointments/${appointment!.id}`, {
-        start_at:         `${date}T${time}:00`,
+        start_at:         `${date}T${time}:00.000Z`,
         duration_minutes: duration,
         dentist_id:       dentistId || undefined,
         chair_id:         chairId || undefined,

@@ -92,8 +92,8 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
   useEffect(() => {
     if (!open) return
-    api.get<Procedure[]>('/api/admin/procedures').then(setProcedures).catch(() => {})
-    api.get<Unit[]>('/api/admin/units').then(setUnits).catch(() => {})
+    api.get<Procedure[]>('/api/procedures').then(setProcedures).catch(() => {})
+    api.get<Unit[]>('/api/units').then(setUnits).catch(() => {})
     api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
   }, [open])
 

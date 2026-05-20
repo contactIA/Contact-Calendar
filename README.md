@@ -359,6 +359,18 @@ flowchart LR
 | `PATCH` | `/api/patients/:id` | Admin · Recep · IA | Atualizar dados |
 | `DELETE` | `/api/patients/:id` | Admin | Remover paciente |
 
+### Leitura pública (todos os roles autenticados)
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `GET` | `/api/dentists` | Lista dentistas da conta |
+| `GET` | `/api/units` | Lista unidades ativas |
+| `GET` | `/api/procedures` | Lista procedimentos ativos |
+
+### Onboarding
+| Método | Endpoint | Acesso | Descrição |
+|--------|----------|:------:|-----------|
+| `POST` | `/api/onboarding/account` | Público | Cria account + admin user, retorna JWT |
+
 ### Administração
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
@@ -402,6 +414,7 @@ Acesso via URL parametrizada: `/{accountId}?userId={externalId}`
 
 | Página | Rota | Quem acessa |
 |--------|------|-------------|
+| Onboarding | `/onboarding` | Público — setup inicial de nova conta |
 | Agenda | `/{accountId}` | Todos |
 | Pacientes | `/{accountId}/pacientes` | Admin · Recepcionista |
 | Configurações | `/{accountId}/configuracoes` | Admin |
@@ -418,6 +431,16 @@ Acesso via URL parametrizada: `/{accountId}?userId={externalId}`
 - `RescheduleModal` — reagendar consulta existente via `PATCH /api/appointments/:id`
 - `DayReportModal` — relatório do dia com KPIs (total, confirmadas, canceladas, taxa)
 - `AppointmentPopover` — detalhes rápidos ao clicar em um bloco (ações: confirmar, reagendar, cancelar)
+
+### Configurações (abas)
+
+| Aba | Funcionalidades |
+|-----|----------------|
+| Unidades | CRUD completo de unidades físicas |
+| Cadeiras | CRUD de consultórios por unidade |
+| Procedimentos | CRUD com cor, duração e especialidade requerida |
+| Profissionais | CRUD de dentistas + modal de horários de trabalho por unidade/dia |
+| API Keys | Criar, ativar/desativar e revogar chaves para o agente de IA |
 
 ---
 
@@ -581,9 +604,16 @@ gantt
     5 habilidades /api/agent/* com prioridade      :done, 2026-05-20, 1d
     withAgentAuth (API Key direto, sem JWT step)   :done, 2026-05-20, 1d
 
-    section Fase 6 · Onboarding
-    Painel de onboarding para novas clínicas       :active, 2026-05-21, 2d
-    Configuração white label (tema, unidade, etc)  :2026-05-23, 1d
+    section Fase 6 · Bugs e completude
+    Endpoints leitura para receptionist            :done, 2026-05-20, 1d
+    UI dentistas + horarios + API Keys             :done, 2026-05-20, 1d
+    Onboarding wizard (account + setup inicial)    :done, 2026-05-20, 1d
+    Correcao bugs (timezone, status, bcrypt)       :done, 2026-05-20, 1d
+
+    section Fase 7 · Proximas melhorias
+    Confirmacao automatica via WhatsApp            :2026-05-21, 2d
+    Realtime na agenda (Supabase Realtime)         :2026-05-23, 2d
+    Dashboard de KPIs por periodo                  :2026-05-25, 3d
 ```
 
 ---

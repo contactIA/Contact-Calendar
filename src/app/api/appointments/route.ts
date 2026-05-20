@@ -45,7 +45,6 @@ export const GET = withAuth(async (req, ctx) => {
       unit:units(id, name)
     `, { count: 'exact' })
     .eq('account_id', ctx.user.accountId)
-    .not('status', 'in', '("cancelled","no_show")')
     .order('start_at', { ascending: true })
     .range(from, from + page_size - 1)
 
@@ -53,6 +52,7 @@ export const GET = withAuth(async (req, ctx) => {
   if (dentist_id) query = query.eq('dentist_id', dentist_id)
   if (patient_id) query = query.eq('patient_id', patient_id)
   if (status)     query = query.eq('status', status as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show')
+  else            query = query.not('status', 'in', '("cancelled","no_show")')
   if (date) {
     query = query
       .gte('start_at', `${date}T00:00:00Z`)

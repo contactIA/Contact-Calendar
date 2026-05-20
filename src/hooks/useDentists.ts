@@ -17,7 +17,7 @@ export function useDentists() {
 
   useEffect(() => {
     api
-      .get<Dentist[]>('/api/admin/dentists')
+      .get<Dentist[]>('/api/dentists')
       .then(setDentists)
       .catch(() => {})
       .finally(() => setLoading(false))

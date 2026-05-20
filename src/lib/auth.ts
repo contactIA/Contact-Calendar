@@ -41,7 +41,7 @@ export async function authenticateHumanUser(accountId: string, externalUserId: s
     '8h'
   )
 
-  return { token, expiresIn: 900, user }
+  return { token, expiresIn: 28800, user }
 }
 
 // Autentica agente de IA via API Key
@@ -54,7 +54,8 @@ export async function authenticateAiAgent(apiKey: string, accountId: string) {
 
   if (!keys?.length) return null
 
-  const matched = keys.find(k => bcrypt.compareSync(apiKey, k.key_hash))
+  const results = await Promise.all(keys.map(k => bcrypt.compare(apiKey, k.key_hash).then(ok => ({ ok, k }))))
+  const matched = results.find(r => r.ok)?.k
   if (!matched) return null
 
   // Atualiza last_used_at
