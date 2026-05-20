@@ -117,19 +117,20 @@ export const POST = withAgentAuth(async (req, { user }) => {
     top.map(d =>
       supabaseAdmin
         .rpc('get_available_slots', {
-          p_dentist_id:        d.id,
-          p_unit_id:           unit_id,
-          p_procedure_id:      procedure_id ?? null,
-          p_date:              date,
-          p_duration_override: null,
+          p_dentist_id:   d.id,
+          p_unit_id:      unit_id,
+          p_date:         date,
+          p_procedure_id: procedure_id as string,
         })
         .then(res => ({ dentista_id: d.id, nome: d.nome, has_history: d.has_history, slots: res.data ?? [] }))
     )
   )
 
+  type Slot = { start_at: string; end_at: string; chair_id: string; chair_name: string }
+
   // Formata horários como HH:MM
-  const format = (slots: { start_time: string }[]) =>
-    slots.map(s => s.start_time?.slice(0, 5)).filter(Boolean)
+  const formatSlots = (slots: Slot[]) =>
+    slots.map(s => s.start_at?.slice(11, 16)).filter(Boolean)
 
   const [first, ...rest] = slotsResults
 
@@ -137,7 +138,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
     ? {
         dentista_id: first.dentista_id,
         dentista:    first.nome,
-        horarios:    format(first.slots as { start_time: string }[]),
+        horarios:    formatSlots(first.slots as Slot[]),
         motivo:      first.has_history ? 'Histórico com o paciente' : 'Maior disponibilidade e prioridade',
       }
     : null
@@ -145,7 +146,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const alternativas = rest.map(r => ({
     dentista_id: r.dentista_id,
     dentista:    r.nome,
-    horarios:    format(r.slots as { start_time: string }[]),
+    horarios:    formatSlots(r.slots as Slot[]),
   }))
 
   return ok({ data: date, recomendado, alternativas, paciente_id: patient_id ?? null })
