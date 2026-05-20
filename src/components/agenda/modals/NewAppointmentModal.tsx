@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { useState, useEffect, useMemo } from 'react'
+import { useAnimatedMount } from '@/hooks/useAnimatedMount'
+import { format, addMinutes, parse } from 'date-fns'
 import { api } from '@/lib/client'
 import { type Dentist } from '@/hooks/useDentists'
-import { useSlots } from '@/hooks/useSlots'
 
-type Patient = { id: string; name: string; phone: string | null }
+type Patient   = { id: string; name: string; phone: string | null }
 type Procedure = { id: string; name: string; duration_minutes: number; color: string }
-type Unit = { id: string; name: string }
+type Unit      = { id: string; name: string }
+type Chair     = { id: string; name: string; unit_id: string }
 
 type Props = {
   open: boolean
@@ -29,68 +30,129 @@ type Props = {
 }
 
 export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initialDentistId, initialDate, initialTime }: Props) {
-  const [step, setStep] = useState<'patient' | 'details' | 'slot'>('patient')
-  const [patientQuery, setPatientQuery] = useState('')
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [procedures, setProcedures] = useState<Procedure[]>([])
-  const [units, setUnits] = useState<Unit[]>([])
-  const [selectedDentistId, setSelectedDentistId] = useState(initialDentistId ?? '')
-  const [selectedProcedureId, setSelectedProcedureId] = useState('')
-  const [selectedUnitId, setSelectedUnitId] = useState('')
-  const [selectedDate, setSelectedDate] = useState(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
-  const [selectedSlot, setSelectedSlot] = useState<{ start_at: string; end_at: string; chair_id: string } | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { mounted, closing } = useAnimatedMount(open, 180)
+  const [step, setStep] = useState<'patient' | 'details' | 'time'>('patient')
 
-  const { slots, loading: loadingSlots } = useSlots(
-    selectedDentistId && selectedUnitId && selectedProcedureId && step === 'slot'
-      ? { dentist_id: selectedDentistId, unit_id: selectedUnitId, procedure_id: selectedProcedureId, date: selectedDate }
-      : null
+  // Patient search
+  const [patientQuery, setPatientQuery]   = useState('')
+  const [patients, setPatients]           = useState<Patient[]>([])
+  const [searchDone, setSearchDone]       = useState(false)
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
+
+  // Inline new patient
+  const [creating, setCreating]           = useState(false)
+  const [newName, setNewName]             = useState('')
+  const [newPhone, setNewPhone]           = useState('')
+  const [newEmail, setNewEmail]           = useState('')
+  const [newBirth, setNewBirth]           = useState('')
+  const [savingPatient, setSavingPatient] = useState(false)
+  const [patientError, setPatientError]   = useState<string | null>(null)
+
+  // Step 2 — details
+  const [procedures, setProcedures]           = useState<Procedure[]>([])
+  const [units, setUnits]                     = useState<Unit[]>([])
+  const [chairs, setChairs]                   = useState<Chair[]>([])
+  const [selectedDentistId, setSelectedDentistId]   = useState(initialDentistId ?? '')
+  const [selectedProcedureId, setSelectedProcedureId] = useState('')
+  const [selectedUnitId, setSelectedUnitId]   = useState('')
+  const [selectedChairId, setSelectedChairId] = useState('')
+  const [selectedDate, setSelectedDate]       = useState(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
+
+  // Step 3 — time
+  const [startTime, setStartTime]         = useState(initialTime?.slice(0, 5) ?? '08:00')
+  const [durationMin, setDurationMin]     = useState(30)
+
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+
+  // Chairs filtered by selected unit
+  const unitChairs = useMemo(
+    () => chairs.filter(c => !selectedUnitId || c.unit_id === selectedUnitId),
+    [chairs, selectedUnitId]
   )
 
-  // Load procedures and units
+  // Auto-select first chair when unit changes
+  useEffect(() => {
+    setSelectedChairId(unitChairs[0]?.id ?? '')
+  }, [selectedUnitId, chairs])
+
+  // Auto-fill duration from procedure
+  useEffect(() => {
+    const proc = procedures.find(p => p.id === selectedProcedureId)
+    if (proc) setDurationMin(proc.duration_minutes)
+  }, [selectedProcedureId, procedures])
+
+  // Computed end time label
+  const endTimeLabel = useMemo(() => {
+    try {
+      const base = parse(`${selectedDate} ${startTime}`, 'yyyy-MM-dd HH:mm', new Date())
+      return format(addMinutes(base, durationMin), 'HH:mm')
+    } catch { return '—' }
+  }, [selectedDate, startTime, durationMin])
+
   useEffect(() => {
     if (!open) return
     api.get<Procedure[]>('/api/admin/procedures').then(setProcedures).catch(() => {})
     api.get<Unit[]>('/api/admin/units').then(setUnits).catch(() => {})
+    api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
   }, [open])
 
-  // Search patients
   useEffect(() => {
-    if (patientQuery.length < 3) { setPatients([]); return }
+    if (patientQuery.length < 3) { setPatients([]); setSearchDone(false); return }
     const t = setTimeout(() => {
-      api.get<{ data: Patient[] }>(`/api/patients?q=${encodeURIComponent(patientQuery)}`)
-        .then(r => setPatients(r.data))
-        .catch(() => {})
+      api.get<Patient[]>(`/api/patients?q=${encodeURIComponent(patientQuery)}`)
+        .then(r => { setPatients(Array.isArray(r) ? r : []); setSearchDone(true) })
+        .catch(() => { setPatients([]); setSearchDone(true) })
     }, 300)
     return () => clearTimeout(t)
   }, [patientQuery])
 
   function reset() {
-    setStep('patient'); setPatientQuery(''); setPatients([])
-    setSelectedPatient(null); setSelectedDentistId(initialDentistId ?? '')
-    setSelectedProcedureId(''); setSelectedUnitId(''); setSelectedSlot(null)
+    setStep('patient'); setPatientQuery(''); setPatients([]); setSearchDone(false)
+    setSelectedPatient(null); setCreating(false)
+    setNewName(''); setNewPhone(''); setNewEmail(''); setNewBirth('')
+    setPatientError(null); setSavingPatient(false)
+    setSelectedDentistId(initialDentistId ?? '')
+    setSelectedProcedureId(''); setSelectedUnitId(''); setSelectedChairId('')
+    setSelectedDate(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
+    setStartTime(initialTime?.slice(0, 5) ?? '08:00')
+    setDurationMin(30)
     setError(null); setSaving(false)
   }
 
-  async function handleConfirm() {
-    if (!selectedPatient || !selectedSlot || !selectedProcedureId || !selectedUnitId) return
-    const proc = procedures.find(p => p.id === selectedProcedureId)
-    if (!proc) return
-    setSaving(true)
+  async function handleCreatePatient() {
+    if (!newName.trim()) { setPatientError('Nome é obrigatório'); return }
+    setSavingPatient(true); setPatientError(null)
     try {
-      await onConfirm({
-        patient_id: selectedPatient.id,
-        dentist_id: selectedDentistId,
-        unit_id: selectedUnitId,
-        chair_id: selectedSlot.chair_id,
-        procedure_id: selectedProcedureId,
-        start_at: selectedSlot.start_at,
-        duration_minutes: proc.duration_minutes,
+      const created = await api.post<Patient>('/api/patients', {
+        name: newName.trim(),
+        phone: newPhone.trim() || undefined,
+        email: newEmail.trim() || undefined,
+        birth_date: newBirth || undefined,
       })
-      reset()
-      onClose()
+      setSelectedPatient(created); setStep('details'); setCreating(false)
+    } catch (e: unknown) {
+      setPatientError(e instanceof Error ? e.message : 'Erro ao cadastrar')
+    } finally {
+      setSavingPatient(false)
+    }
+  }
+
+  async function handleConfirm() {
+    if (!selectedPatient || !selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId) return
+    setSaving(true); setError(null)
+    try {
+      const start_at = new Date(`${selectedDate}T${startTime}:00`).toISOString()
+      await onConfirm({
+        patient_id:       selectedPatient.id,
+        dentist_id:       selectedDentistId,
+        unit_id:          selectedUnitId,
+        chair_id:         selectedChairId,
+        procedure_id:     selectedProcedureId,
+        start_at,
+        duration_minutes: durationMin,
+      })
+      reset(); onClose()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao agendar')
     } finally {
@@ -98,25 +160,30 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     }
   }
 
-  if (!open) return null
+  if (!mounted) return null
+
+  const stepIndex = { patient: 0, details: 1, time: 2 }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/30 ${closing ? 'animate-backdrop-out' : 'animate-backdrop-in'}`}>
+      <div className={`bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden ${closing ? 'animate-modal-out' : 'animate-modal-in'}`}>
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Novo Agendamento</h2>
-          <button onClick={() => { reset(); onClose() }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+          <button onClick={() => { reset(); onClose() }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
-        {/* Steps indicator */}
+        {/* Steps */}
         <div className="flex px-6 pt-4 gap-2">
-          {(['patient', 'details', 'slot'] as const).map((s, i) => (
+          {(['patient', 'details', 'time'] as const).map((s, i) => (
             <div key={s} className="flex items-center gap-2 flex-1">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                step === s ? 'bg-green-600 text-white' :
-                (['details', 'slot'].indexOf(s) < ['details', 'slot'].indexOf(step)) ? 'bg-green-100 text-green-700' :
-                'bg-gray-100 text-gray-400'
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
+                step === s
+                  ? 'bg-gradient-to-r from-violet-600 to-rose-600 text-white'
+                  : i < stepIndex[step]
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-400'
               }`}>{i + 1}</div>
               <span className="text-xs text-gray-500 hidden sm:block">
                 {s === 'patient' ? 'Paciente' : s === 'details' ? 'Detalhes' : 'Horário'}
@@ -127,95 +194,153 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
         </div>
 
         <div className="px-6 py-4">
-          {/* Step 1: patient */}
-          {step === 'patient' && (
+
+          {/* Step 1a — busca */}
+          {step === 'patient' && !creating && (
             <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Buscar paciente</label>
+              <Field label="Buscar paciente">
                 <input
                   autoFocus
                   value={patientQuery}
-                  onChange={e => setPatientQuery(e.target.value)}
+                  onChange={e => { setPatientQuery(e.target.value); setSearchDone(false) }}
                   placeholder="Nome ou telefone (mín. 3 caracteres)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
                 />
-              </div>
+              </Field>
               {patients.length > 0 && (
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-48 overflow-y-auto">
                   {patients.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => { setSelectedPatient(p); setStep('details') }}
-                      className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors"
-                    >
+                    <button key={p.id} onClick={() => { setSelectedPatient(p); setStep('details') }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors">
                       <p className="text-sm font-medium text-gray-800">{p.name}</p>
                       {p.phone && <p className="text-xs text-gray-400">{p.phone}</p>}
                     </button>
                   ))}
                 </div>
               )}
-              {patientQuery.length >= 3 && patients.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-2">Nenhum paciente encontrado</p>
+              {searchDone && patients.length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-200 px-4 py-4 text-center space-y-2">
+                  <p className="text-sm text-gray-500">Nenhum resultado para <strong>"{patientQuery}"</strong></p>
+                  <button onClick={() => { setNewName(patientQuery); setCreating(true) }}
+                    className="text-sm font-semibold text-violet-600 hover:text-violet-700 transition-colors">
+                    + Cadastrar novo paciente
+                  </button>
+                </div>
               )}
             </div>
           )}
 
-          {/* Step 2: details */}
+          {/* Step 1b — cadastro inline */}
+          {step === 'patient' && creating && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <button onClick={() => setCreating(false)} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
+                <p className="text-sm font-semibold text-gray-700">Novo paciente</p>
+              </div>
+              <Field label="Nome *">
+                <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder="Nome completo"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </Field>
+              <Field label="Telefone / WhatsApp">
+                <input value={newPhone} onChange={e => setNewPhone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="E-mail">
+                  <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                    placeholder="opcional"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </Field>
+                <Field label="Nascimento">
+                  <input type="date" value={newBirth} onChange={e => setNewBirth(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </Field>
+              </div>
+              {patientError && <p className="text-xs text-red-600">{patientError}</p>}
+            </div>
+          )}
+
+          {/* Step 2 — detalhes */}
           {step === 'details' && selectedPatient && (
             <div className="space-y-3">
-              <div className="bg-green-50 rounded-lg px-3 py-2 text-sm">
-                <span className="text-green-700 font-medium">{selectedPatient.name}</span>
+              <div className="flex items-center gap-2 bg-violet-50 rounded-lg px-3 py-2">
+                <span className="text-violet-500 text-sm">👤</span>
+                <span className="text-sm font-medium text-violet-800">{selectedPatient.name}</span>
+                {selectedPatient.phone && <span className="text-xs text-violet-400 ml-auto">{selectedPatient.phone}</span>}
               </div>
               <Field label="Dentista">
                 <select value={selectedDentistId} onChange={e => setSelectedDentistId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
                   <option value="">Selecionar...</option>
                   {dentists.map(d => <option key={d.id} value={d.id}>{d.user?.name}</option>)}
                 </select>
               </Field>
-              <Field label="Unidade">
-                <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                  <option value="">Selecionar...</option>
-                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Unidade">
+                  <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+                    <option value="">Selecionar...</option>
+                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Cadeira">
+                  <select value={selectedChairId} onChange={e => setSelectedChairId(e.target.value)}
+                    disabled={!selectedUnitId}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40">
+                    <option value="">Selecionar...</option>
+                    {unitChairs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+              </div>
               <Field label="Procedimento">
                 <select value={selectedProcedureId} onChange={e => setSelectedProcedureId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
                   <option value="">Selecionar...</option>
                   {procedures.map(p => <option key={p.id} value={p.id}>{p.name} ({p.duration_minutes}min)</option>)}
                 </select>
               </Field>
-              <Field label="Data">
-                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-              </Field>
             </div>
           )}
 
-          {/* Step 3: slot */}
-          {step === 'slot' && (
-            <div>
-              <p className="text-xs text-gray-500 mb-3">Horários disponíveis em {format(new Date(selectedDate + 'T12:00:00'), 'dd/MM/yyyy')}</p>
-              {loadingSlots && <p className="text-sm text-gray-400 text-center py-4">Carregando...</p>}
-              {!loadingSlots && slots.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-4">Nenhum horário disponível nessa data</p>
-              )}
-              <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto">
-                {slots.map(slot => (
-                  <button
-                    key={slot.start_at}
-                    onClick={() => setSelectedSlot(slot)}
-                    className={`py-2 rounded-lg text-sm font-medium transition-colors border ${
-                      selectedSlot?.start_at === slot.start_at
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-green-400 hover:text-green-700'
-                    }`}
-                  >
-                    {format(new Date(slot.start_at), 'HH:mm')}
-                  </button>
-                ))}
+          {/* Step 3 — horário */}
+          {step === 'time' && (
+            <div className="space-y-4">
+              <Field label="Data">
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Início">
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </Field>
+                <Field label="Duração (min)">
+                  <input type="number" min={5} step={5} value={durationMin}
+                    onChange={e => setDurationMin(Math.max(5, Number(e.target.value)))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </Field>
+              </div>
+
+              {/* Resumo visual */}
+              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Início</p>
+                  <p className="text-xl font-bold text-gray-800">{startTime}</p>
+                </div>
+                <div className="flex-1 mx-3 flex flex-col items-center">
+                  <div className="h-px w-full bg-gray-300 relative">
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">
+                      {durationMin} min
+                    </div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fim</p>
+                  <p className="text-xl font-bold text-gray-800">{endTimeLabel}</p>
+                </div>
               </div>
             </div>
           )}
@@ -225,26 +350,37 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
         {/* Footer */}
         <div className="flex gap-2 px-6 pb-5">
-          {step !== 'patient' && (
-            <button onClick={() => setStep(step === 'slot' ? 'details' : 'patient')}
+          {(step !== 'patient' || creating) && !savingPatient && (
+            <button
+              onClick={() => {
+                if (creating) { setCreating(false); return }
+                setStep(step === 'time' ? 'details' : 'patient')
+              }}
               className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
               Voltar
             </button>
           )}
-          {step === 'details' && (
-            <button
-              disabled={!selectedDentistId || !selectedUnitId || !selectedProcedureId}
-              onClick={() => setStep('slot')}
-              className="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-40 transition-colors">
-              Ver horários
+
+          {step === 'patient' && creating && (
+            <button disabled={!newName.trim() || savingPatient} onClick={handleCreatePatient}
+              className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
+              {savingPatient ? 'Salvando...' : 'Salvar e continuar'}
             </button>
           )}
-          {step === 'slot' && (
+
+          {step === 'details' && (
             <button
-              disabled={!selectedSlot || saving}
-              onClick={handleConfirm}
-              className="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-40 transition-colors">
-              {saving ? 'Agendando...' : 'Confirmar'}
+              disabled={!selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId}
+              onClick={() => setStep('time')}
+              className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
+              Definir horário
+            </button>
+          )}
+
+          {step === 'time' && (
+            <button disabled={saving} onClick={handleConfirm}
+              className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
+              {saving ? 'Agendando...' : 'Confirmar agendamento'}
             </button>
           )}
         </div>

@@ -7,7 +7,7 @@ import { AppointmentBlock } from '../AppointmentBlock'
 
 const HOUR_START = 7
 const HOUR_END   = 20
-const SLOT_H     = 60   // px per 30-min slot → 120px per hour
+const SLOT_H     = 64   // px per 30-min slot → 128px per hour
 const PX_PER_MIN = (SLOT_H * 2) / 60
 
 function timeToMinutes(time: string) {
@@ -52,44 +52,45 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
 
   return (
     <div ref={gridRef} className="flex-1 overflow-auto agenda-scroll relative">
-      <div className="flex" style={{ minWidth: `${visibleDentists.length * 160 + 56}px` }}>
+      <div className="relative flex" style={{ minWidth: `${visibleDentists.length * 160 + 56}px`, paddingTop: 16 }}>
+
+        {/* Full-width horizontal grid lines — drawn over the entire row including the hour rail */}
+        <div className="absolute inset-0 pointer-events-none" style={{ height: totalH + 10 }}>
+          {hours.map(h => (
+            <div key={h}>
+              <div
+                className="absolute inset-x-0"
+                style={{ top: (h - HOUR_START) * SLOT_H * 2 + 16, borderTop: '1px solid #cbd5e1' }}
+              />
+              <div
+                className="absolute inset-x-0"
+                style={{ top: (h - HOUR_START) * SLOT_H * 2 + SLOT_H + 16, borderTop: '1px dashed #e2e8f0' }}
+              />
+            </div>
+          ))}
+        </div>
 
         {/* Hour labels */}
-        <div className="w-14 flex-shrink-0 border-r border-gray-100 relative" style={{ height: totalH }}>
+        <div className="w-14 flex-shrink-0 border-r relative bg-white z-10" style={{ height: totalH, borderColor: '#cbd5e1' }}>
           {hours.map(h => (
-            <div
-              key={h}
-              style={{ top: (h - HOUR_START) * SLOT_H * 2 }}
-              className="absolute right-2 -translate-y-1/2 text-[11px] text-gray-400 select-none"
-            >
-              {String(h).padStart(2, '0')}:00
+            <div key={h} style={{ top: (h - HOUR_START) * SLOT_H * 2 }} className="absolute inset-x-0">
+              <span className="absolute right-2 -top-3 text-[11px] text-gray-400 select-none leading-none">
+                {String(h).padStart(2, '0')}:00
+              </span>
             </div>
           ))}
         </div>
 
         {/* Dentist columns */}
-        {visibleDentists.map(dentist => {
+        {visibleDentists.map((dentist) => {
           const dentistAppts = appointments.filter(a => a.dentist?.id === dentist.id)
 
           return (
             <div
               key={dentist.id}
-              className="flex-1 min-w-40 border-r border-gray-100 relative"
-              style={{ height: totalH }}
+              className="flex-1 min-w-40 relative bg-white"
+              style={{ height: totalH, borderRight: '1px solid #cbd5e1' }}
             >
-              {/* Hour grid lines */}
-              {hours.map(h => (
-                <div key={h}>
-                  <div
-                    style={{ top: (h - HOUR_START) * SLOT_H * 2 }}
-                    className="absolute inset-x-0 border-t border-gray-100"
-                  />
-                  <div
-                    style={{ top: (h - HOUR_START) * SLOT_H * 2 + SLOT_H }}
-                    className="absolute inset-x-0 border-t border-dashed border-gray-100"
-                  />
-                </div>
-              ))}
 
               {/* Clickable empty slots */}
               {hours.map(h => (
@@ -101,7 +102,7 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
                     <div
                       key={`${h}-${m}`}
                       style={{ top: topPx, height: SLOT_H }}
-                      className="absolute inset-x-0 hover:bg-green-50 cursor-pointer transition-colors z-0"
+                      className="absolute inset-x-0 hover:bg-violet-50/50 cursor-pointer transition-colors z-0"
                       onClick={() => onSlotClick(dentist.id, iso)}
                     />
                   )

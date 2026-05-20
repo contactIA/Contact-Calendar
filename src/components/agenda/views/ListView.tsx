@@ -142,7 +142,7 @@ function PagBtn({ children, onClick, disabled, active }: {
       onClick={onClick}
       disabled={disabled}
       className={`w-7 h-7 rounded text-xs font-medium transition-colors ${
-        active   ? 'bg-green-600 text-white' :
+        active   ? 'bg-gradient-to-r from-violet-600 to-rose-600 text-white' :
         disabled ? 'text-gray-300 cursor-not-allowed' :
                    'text-gray-500 hover:bg-gray-100'
       }`}

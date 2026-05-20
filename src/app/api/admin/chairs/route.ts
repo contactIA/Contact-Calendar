@@ -28,7 +28,7 @@ export const GET = withAuth(async (req, ctx) => {
   const { data, error } = await query
   if (error) return err(error.message, 500)
   return ok(data)
-}, ['admin'])
+}, ['admin', 'receptionist', 'dentist'])
 
 // POST /api/admin/chairs
 export const POST = withAuth(async (req, ctx) => {

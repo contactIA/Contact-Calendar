@@ -25,6 +25,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(path, { ...init, headers })
   if (!res.ok) {
+    if (res.status === 401) clearToken()
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error ?? `HTTP ${res.status}`)
   }

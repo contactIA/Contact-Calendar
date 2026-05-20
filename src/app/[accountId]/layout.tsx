@@ -20,7 +20,7 @@ export default function AccountLayout({
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <div className="w-8 h-8 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-gray-500">Carregando...</p>
         </div>
       </div>

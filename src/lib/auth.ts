@@ -38,7 +38,7 @@ export async function authenticateHumanUser(accountId: string, externalUserId: s
 
   const token = await signJwt(
     { sub: user.id, accountId, role: user.role },
-    '15m'
+    '8h'
   )
 
   return { token, expiresIn: 900, user }

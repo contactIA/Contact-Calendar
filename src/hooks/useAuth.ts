@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api, setToken, getToken } from '@/lib/client'
+import { api, setToken, getToken, clearToken } from '@/lib/client'
 
 type AuthState =
   | { status: 'loading' }
@@ -17,17 +17,24 @@ export function useAuth(accountId: string, userId: string | null) {
       return
     }
 
-    // If token already in session, skip re-auth
-    if (getToken()) {
-      setAuth({ status: 'ready', role: '', accountId })
-      return
+    // Reuse token only if it's still valid (exp > now + 60s buffer)
+    const existing = getToken()
+    if (existing) {
+      try {
+        const payload = JSON.parse(atob(existing.split('.')[1]))
+        if (payload.exp && payload.exp > Math.floor(Date.now() / 1000) + 60) {
+          setAuth({ status: 'ready', role: payload.role ?? '', accountId })
+          return
+        }
+      } catch {}
+      clearToken()
     }
 
     api
-      .post<{ token: string; user: { role: string } }>('/api/auth/url', { accountId, userId })
+      .post<{ token: string; role: string }>('/api/auth/url', { accountId, userId })
       .then(res => {
         setToken(res.token)
-        setAuth({ status: 'ready', role: res.user.role, accountId })
+        setAuth({ status: 'ready', role: res.role, accountId })
       })
       .catch(e => setAuth({ status: 'error', message: e.message }))
   }, [accountId, userId])
