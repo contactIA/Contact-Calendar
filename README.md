@@ -299,18 +299,18 @@ Dois modelos distintos de autenticação:
 ```mermaid
 flowchart LR
     subgraph Humano
-        URL["URL com\naccountId + userId"]
-        -->|POST /api/auth/url| JWT["JWT · 15 min\nrole: admin/receptionist/dentist"]
+        URL["URL com accountId + userId"]
+        -->|POST /api/auth/url| JWT["JWT 15 min - role: admin/receptionist/dentist"]
     end
 
-    subgraph Agente IA — endpoints normais
+    subgraph AgentePadrao["Agente IA - endpoints normais"]
         KEY1["API Key"]
-        -->|POST /api/auth/ai| JWT2["JWT · 60 min\nrole: ai_agent"]
+        -->|POST /api/auth/ai| JWT2["JWT 60 min - role: ai_agent"]
     end
 
-    subgraph Agente IA — habilidades
-        KEY2["API Key\n+ X-Account-ID header"]
-        -->|direto| AGENT["POST /api/agent/*\nvalidação interna"]
+    subgraph AgenteHabilidades["Agente IA - habilidades"]
+        KEY2["API Key + X-Account-ID header"]
+        -->|direto| AGENT["POST /api/agent/* - validacao interna"]
     end
 ```
 
