@@ -67,6 +67,7 @@ export function AgendaShell() {
   const [modalInitial, setModalInitial] = useState<{ dentistId?: string; date?: string; time?: string }>({})
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
   const [listPage, setListPage]         = useState(1)
+  const [listStatus, setListStatus]     = useState<string>('')
   const [search, setSearch]             = useState('')
 
   const { dentists, loading: loadingDentists } = useDentists()
@@ -76,10 +77,10 @@ export function AgendaShell() {
   const weekEnd   = format(endOfWeek(date,   { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
   const filters = view === 'day'
-    ? { date: dateStr, dentist_id: selectedDentistId ?? undefined }
+    ? { date: dateStr, dentist_id: selectedDentistId ?? undefined, status: 'all' }
     : view === 'week'
-    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200 }
-    : { page: listPage, page_size: 50 }
+    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: 'all' }
+    : { page: listPage, page_size: 50, ...(listStatus ? { status: listStatus } : { status: 'all' }) }
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
 
@@ -165,8 +166,10 @@ export function AgendaShell() {
             total={total}
             page={listPage}
             pageSize={50}
-            onPageChange={setListPage}
+            onPageChange={p => { setListPage(p) }}
             onAppointmentClick={handleAppointmentClick}
+            statusFilter={listStatus}
+            onStatusFilter={s => { setListStatus(s); setListPage(1) }}
           />
         )}
       </div>

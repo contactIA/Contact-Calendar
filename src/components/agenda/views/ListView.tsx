@@ -23,6 +23,16 @@ const STATUS_LABEL: Record<string, string> = {
   no_show:     'Faltou',
 }
 
+const STATUS_FILTERS = [
+  { value: '',           label: 'Todos' },
+  { value: 'scheduled',   label: 'Agendado' },
+  { value: 'confirmed',   label: 'Confirmado' },
+  { value: 'in_progress', label: 'Atendendo' },
+  { value: 'completed',   label: 'Concluído' },
+  { value: 'cancelled',   label: 'Cancelado' },
+  { value: 'no_show',     label: 'Faltou' },
+]
+
 type Props = {
   appointments: Appointment[]
   loading: boolean
@@ -31,13 +41,33 @@ type Props = {
   pageSize: number
   onPageChange: (page: number) => void
   onAppointmentClick: (appt: Appointment, el: HTMLElement) => void
+  statusFilter: string
+  onStatusFilter: (status: string) => void
 }
 
-export function ListView({ appointments, loading, total, page, pageSize, onPageChange, onAppointmentClick }: Props) {
+export function ListView({ appointments, loading, total, page, pageSize, onPageChange, onAppointmentClick, statusFilter, onStatusFilter }: Props) {
   const totalPages = Math.ceil(total / pageSize)
 
   return (
     <div className="flex-1 overflow-auto agenda-scroll p-4">
+
+      {/* Filtros de status */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {STATUS_FILTERS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => onStatusFilter(f.value)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              statusFilter === f.value
+                ? 'bg-violet-600 text-white border-violet-600'
+                : 'bg-white text-gray-500 border-violet-200 hover:bg-violet-50'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead>

@@ -51,8 +51,8 @@ export const GET = withAuth(async (req, ctx) => {
   if (unit_id)    query = query.eq('unit_id', unit_id)
   if (dentist_id) query = query.eq('dentist_id', dentist_id)
   if (patient_id) query = query.eq('patient_id', patient_id)
-  if (status)     query = query.eq('status', status as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show')
-  else            query = query.not('status', 'in', '("cancelled","no_show")')
+  if (status && status !== 'all') query = query.eq('status', status as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show')
+  else if (!status)               query = query.not('status', 'in', '("cancelled","no_show")')
   if (date) {
     query = query
       .gte('start_at', `${date}T00:00:00Z`)
