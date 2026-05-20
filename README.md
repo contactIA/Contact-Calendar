@@ -38,7 +38,7 @@ Recepcionistas, dentistas e gestores acessam via **interface React** com URL par
 
 **Para agentes de IA**
 
-O agente de WhatsApp consome a mesma **REST API** que a recepcionista usa. Mesmas regras, mesmos dados, mesma proteção contra conflitos — canal diferente.
+O agente de WhatsApp usa **5 endpoints dedicados** (`/api/agent/*`) que encapsulam toda a lógica de negócio em uma chamada só. Lookup de paciente por telefone, prioridade de dentistas e resolução de cadeira acontecem internamente.
 
 </td>
 </tr>
@@ -54,9 +54,9 @@ flowchart TD
     R(["Recepcionista\n(Browser)"])
 
     H["Helena / WTS Chat\nplataforma de mensageria"]
-    UI["Interface React\n(em desenvolvimento)"]
+    UI["Interface React\nNext.js · Tailwind"]
 
-    AI["Agente de IA\nN8N + OpenAI"]
+    AI["Agente de IA\nN8N + OpenAI / LLM"]
 
     API["Escala Agenda — Backend\nNext.js 15 · App Router · TypeScript"]
 
@@ -64,7 +64,7 @@ flowchart TD
 
     P -->|mensagem| H
     H -->|webhook POST| AI
-    AI -->|REST API · JWT| API
+    AI -->|API Key + X-Account-ID| API
     R --> UI
     UI -->|HTTP · JWT| API
     API -->|supabase-js| DB
@@ -77,50 +77,145 @@ flowchart TD
 
 ---
 
-## Fluxo Completo do Agente de IA
+## Fluxo do Agente de IA (habilidades)
+
+O agente possui **5 habilidades** — cada uma é uma única chamada HTTP com JSON + headers. Toda a lógica interna (lookup de paciente, prioridade, slots, cadeiras) é resolvida pelo backend.
 
 ```mermaid
 sequenceDiagram
     actor P as Paciente (WhatsApp)
     participant H as Helena
-    participant AI as Agente de IA
+    participant AI as Agente de IA (N8N)
     participant API as Escala Agenda API
-    participant DB as Supabase
 
     P->>H: "Quero agendar uma limpeza"
     H->>AI: webhook { sessionId, contact, lastMessage }
 
-    AI->>API: POST /api/auth/ai { api_key, account_id }
-    API-->>AI: { token, expires_in: 3600 }
+    AI->>API: POST /api/agent/disponibilidade
+    Note right of API: Busca prioridade de dentistas,<br/>slots disponíveis e retorna<br/>recomendado + alternativas
+    API-->>AI: { recomendado: { dentista, horarios }, alternativas }
 
-    AI->>API: GET /api/patients?q=11999999999
-    API->>DB: SELECT * FROM patients WHERE phone LIKE ...
-    DB-->>API: paciente encontrado / não encontrado
-    API-->>AI: [{ id, name, phone }]
+    AI->>P: "Tenho horário com Dr. Carlos na 3ª às 14h (recomendado). Confirma?"
+    P->>AI: "Pode ser!"
 
-    AI->>API: GET /api/dentists/priority?unit_id=&procedure_id=&patient_id=
-    API-->>AI: dentistas ordenados por prioridade
+    AI->>API: POST /api/agent/agendar
+    Note right of API: Busca ou cria paciente por telefone,<br/>resolve cadeira disponível,<br/>cria a consulta
+    API-->>AI: { confirmado: true, resumo: "Limpeza com Dr. Carlos em 20/05 às 14h" }
 
-    loop Para cada dentista (em ordem)
-        AI->>API: GET /api/slots/available?dentist_id=&date=&procedure_id=
-        API->>DB: função get_available_slots()
-        DB-->>API: slots livres
-        API-->>AI: [{ start_at, end_at, chair_id }]
-    end
-
-    AI->>P: "Tenho horário na 3ª às 14h. Confirma?"
-    P->>AI: "Sim!"
-
-    AI->>API: POST /api/appointments/check-conflicts
-    API-->>AI: { has_conflict: false }
-
-    AI->>API: POST /api/appointments
-    API->>DB: verificação atômica + INSERT
-    DB-->>API: consulta criada
-    API-->>AI: { id, start_at, status: "scheduled" }
-
-    AI->>H: sendSessionMessage(sessionId, "Consulta confirmada!")
+    AI->>H: sendSessionMessage(sessionId, resumo)
     H->>P: "Consulta confirmada!"
+```
+
+---
+
+## Habilidades do Agente (`/api/agent/*`)
+
+Autenticação: `Authorization: Bearer <api_key>` + `X-Account-ID: <account_id>` em todos os endpoints.
+
+### POST `/api/agent/disponibilidade`
+
+Retorna slots disponíveis com dentista recomendado ordenado por prioridade (histórico do paciente → menor ocupação → score configurável).
+
+```json
+// Request
+{
+  "data": "2026-05-20",
+  "unit_id": "uuid",
+  "procedure_id": "uuid",
+  "telefone": "5511999887766",
+  "quantidade_dentistas": 2
+}
+
+// Response
+{
+  "data": "2026-05-20",
+  "paciente_id": "uuid-ou-null",
+  "recomendado": {
+    "dentista_id": "uuid",
+    "dentista": "Dr. Carlos",
+    "horarios": ["09:00", "10:00", "14:00"],
+    "motivo": "Histórico com o paciente"
+  },
+  "alternativas": [
+    { "dentista_id": "uuid", "dentista": "Dra. Ana", "horarios": ["11:00", "15:00"] }
+  ]
+}
+```
+
+### POST `/api/agent/agendar`
+
+Busca ou cria o paciente pelo telefone. Se `chair_id` não informado, encontra automaticamente a primeira cadeira disponível.
+
+```json
+// Request
+{
+  "telefone": "5511999887766",
+  "nome_paciente": "João Silva",
+  "dentista_id": "uuid",
+  "horario": "2026-05-20T14:00:00Z",
+  "procedure_id": "uuid",
+  "unit_id": "uuid"
+}
+
+// Response
+{
+  "confirmado": true,
+  "agendamento_id": "uuid",
+  "resumo": "Limpeza com Dr. Carlos em 20/05 às 14h"
+}
+```
+
+### POST `/api/agent/cancelar`
+
+Se `agendamento_id` omitido, cancela a próxima consulta futura do paciente.
+
+```json
+// Request
+{ "telefone": "5511999887766", "agendamento_id": "uuid" }
+
+// Response
+{ "cancelado": true, "resumo": "Limpeza com Dr. Carlos em 20/05 às 14h foi cancelada" }
+```
+
+### POST `/api/agent/remarcar`
+
+Reagenda para novo horário. Se mudar de dentista e a cadeira original conflitar, resolve automaticamente outra cadeira disponível.
+
+```json
+// Request
+{
+  "telefone": "5511999887766",
+  "agendamento_id": "uuid",
+  "novo_horario": "2026-05-21T10:00:00Z",
+  "novo_dentista_id": "uuid"
+}
+
+// Response
+{ "reagendado": true, "agendamento_id": "uuid", "resumo": "Limpeza com Dr. Carlos remarcada para 21/05 às 10h" }
+```
+
+### POST `/api/agent/consultar`
+
+Retorna a próxima consulta agendada do paciente.
+
+```json
+// Request
+{ "telefone": "5511999887766" }
+
+// Response
+{
+  "tem_agendamento": true,
+  "proxima_consulta": {
+    "id": "uuid",
+    "data": "2026-05-20",
+    "horario": "14:00",
+    "dentista": "Dr. Carlos",
+    "procedimento": "Limpeza",
+    "unidade": "Unidade Centro",
+    "status": "scheduled",
+    "resumo": "Limpeza com Dr. Carlos em quarta-feira, 20/05/2026 às 14h na Unidade Centro"
+  }
+}
 ```
 
 ---
@@ -138,9 +233,9 @@ erDiagram
     units ||--o{ dentist_units : "vincula"
 
     dentists ||--o{ dentist_units : "vinculado a"
-    dentists ||--o{ dentist_schedules : "tem horários"
-    dentists ||--o{ dentist_priorities : "tem prioridades"
-    dentists ||--o{ schedule_blocks : "tem bloqueios"
+    dentists ||--o{ dentist_schedules : "horários"
+    dentists ||--o{ dentist_priorities : "prioridades"
+    dentists ||--o{ schedule_blocks : "bloqueios"
 
     appointments }o--|| dentists : "atendido por"
     appointments }o--|| patients : "de"
@@ -199,25 +294,31 @@ stateDiagram-v2
 
 ## Autenticação
 
+Dois modelos distintos de autenticação:
+
 ```mermaid
 flowchart LR
     subgraph Humano
         URL["URL com\naccountId + userId"]
-        -->|POST /api/auth/url| JWT15["JWT · 15 min\nrole: admin/receptionist/dentist"]
+        -->|POST /api/auth/url| JWT["JWT · 15 min\nrole: admin/receptionist/dentist"]
     end
 
-    subgraph IA
-        KEY["API Key\nda conta"]
-        -->|POST /api/auth/ai| JWT60["JWT · 60 min\nrole: ai_agent"]
+    subgraph Agente IA — endpoints normais
+        KEY1["API Key"]
+        -->|POST /api/auth/ai| JWT2["JWT · 60 min\nrole: ai_agent"]
     end
 
-    JWT15 & JWT60 -->|Authorization: Bearer token| Endpoints["Endpoints protegidos"]
+    subgraph Agente IA — habilidades
+        KEY2["API Key\n+ X-Account-ID header"]
+        -->|direto| AGENT["POST /api/agent/*\nvalidação interna"]
+    end
 ```
 
-| Tipo | Endpoint | Expiração | Renovação |
-|------|----------|-----------|-----------|
-| Humano | `POST /api/auth/url` | 15 min | Automática via refresh |
-| Agente IA | `POST /api/auth/ai` | 60 min | Agente re-autentica |
+| Tipo | Como autentica | Expiração |
+|------|---------------|-----------|
+| Humano | `POST /api/auth/url` → JWT no header | 15 min |
+| Agente (API geral) | `POST /api/auth/ai` → JWT no header | 60 min |
+| Agente (habilidades) | `Authorization: Bearer <api_key>` + `X-Account-ID` | Sem JWT — valida a key diretamente |
 
 > API Keys são armazenadas com hash bcrypt — texto plano nunca persiste no banco.
 
@@ -231,38 +332,100 @@ flowchart LR
 | `POST` | `/api/auth/url` | Público | Auth humano via URL → JWT 15min |
 | `POST` | `/api/auth/ai` | Público | Auth agente via API Key → JWT 60min |
 
+### Habilidades do Agente (API Key direto)
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/api/agent/disponibilidade` | Slots disponíveis + dentista recomendado por prioridade |
+| `POST` | `/api/agent/agendar` | Cria consulta (lookup/criação de paciente por telefone) |
+| `POST` | `/api/agent/cancelar` | Cancela próxima ou consulta específica |
+| `POST` | `/api/agent/remarcar` | Reagenda com resolução automática de cadeira |
+| `POST` | `/api/agent/consultar` | Próxima consulta agendada do paciente |
+
 ### Agendamento
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
 | `GET` | `/api/dentists/priority` | Autenticado | Dentistas priorizados por contexto |
 | `GET` | `/api/slots/available` | Autenticado | Slots livres por dentista/data |
-| `POST` | `/api/appointments/check-conflicts` | Autenticado | Verificação de conflito |
-| `POST` | `/api/appointments` | Admin · Recep · IA | Criar consulta |
 | `GET` | `/api/appointments` | Autenticado | Listar consultas (filtros + paginação) |
+| `POST` | `/api/appointments` | Admin · Recep · IA | Criar consulta |
+| `PATCH` | `/api/appointments/:id` | Admin · Recep · IA | Reagendar (novo horário/dentista) |
 | `PATCH` | `/api/appointments/:id/status` | Autenticado¹ | Atualizar status |
 
 ### Pacientes
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `GET` | `/api/patients?q=` | Autenticado | Buscar por nome ou telefone |
+| `GET` | `/api/patients` | Autenticado | Buscar por nome ou telefone |
 | `POST` | `/api/patients` | Admin · Recep · IA | Criar paciente |
+| `PATCH` | `/api/patients/:id` | Admin · Recep · IA | Atualizar dados |
+| `DELETE` | `/api/patients/:id` | Admin | Remover paciente |
+
+### Administração
+| Método | Endpoint | Acesso | Descrição |
+|--------|----------|:------:|-----------|
+| `GET/POST` | `/api/admin/units` | Admin | CRUD unidades |
+| `GET/POST` | `/api/admin/dentists` | Admin | CRUD dentistas |
+| `GET/POST` | `/api/admin/chairs` | Admin | CRUD cadeiras |
+| `GET/POST` | `/api/admin/procedures` | Admin | CRUD procedimentos |
+| `GET/POST` | `/api/admin/api-keys` | Admin | Gerenciar API Keys |
+| `GET/POST` | `/api/admin/dentists/:id/schedules` | Admin | Horários de trabalho |
+| `GET/POST` | `/api/admin/dentists/:id/blocks` | Admin | Bloqueios de agenda |
+| `GET/POST` | `/api/admin/dentists/:id/priorities` | Admin | Prioridades por unidade |
 
 ### Helena
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
-| `POST` | `/api/helena/transfer` | Autenticado | Transferir para equipe humana |
+| `POST` | `/api/helena/transfer` | Autenticado | Transferir conversa para equipe humana |
 
-> ¹ IA só pode `cancelled`. Dentista não pode `cancelled` nem `no_show`.
+> ¹ IA só pode setar `cancelled`. Dentista não pode `cancelled` nem `no_show`.
+
+---
+
+## Prioridade de Dentistas
+
+O sistema de prioridade é uma **recomendação**, não uma atribuição forçada. O agente apresenta o dentista recomendado ao paciente, que pode escolher outro.
+
+A ordenação considera três critérios em cascata:
+
+| Critério | Peso | Lógica |
+|----------|------|--------|
+| Histórico com o paciente | Alto | Dentista que já atendeu este paciente vai para o topo |
+| Ocupação do dia | Médio | Dentista com menos consultas no dia é preferido |
+| Score de prioridade | Base | Configurado manualmente pelo admin por unidade (`dentist_units.priority`) |
+
+A especialidade do procedimento é usada como filtro hard — dentistas sem a especialidade requerida são excluídos antes da ordenação.
+
+---
+
+## Interface React
+
+Acesso via URL parametrizada: `/{accountId}?userId={externalId}`
+
+| Página | Rota | Quem acessa |
+|--------|------|-------------|
+| Agenda | `/{accountId}` | Todos |
+| Pacientes | `/{accountId}/pacientes` | Admin · Recepcionista |
+| Configurações | `/{accountId}/configuracoes` | Admin |
+
+### Visualizações da agenda
+
+- **Diária** — colunas por dentista, blocos de consulta clicáveis com popover de detalhes
+- **Semanal** — grid 7 dias com filtro por dentista, dados via API com range de datas
+- **Lista** — tabela cronológica com status colorido
+
+### Modais e interações
+
+- `NewAppointmentModal` — criar nova consulta com seleção de dentista, data, hora e procedimento
+- `RescheduleModal` — reagendar consulta existente via `PATCH /api/appointments/:id`
+- `DayReportModal` — relatório do dia com KPIs (total, confirmadas, canceladas, taxa)
+- `AppointmentPopover` — detalhes rápidos ao clicar em um bloco (ações: confirmar, reagendar, cancelar)
 
 ---
 
 ## Integração Helena (WTS Chat)
 
-A Helena é o canal de comunicação com o paciente via WhatsApp. O sistema a usa em três momentos:
-
 ```mermaid
 flowchart LR
-    A["Agendamento\ncriado"] -->|sendSessionMessage| B["Paciente recebe\nconfirmação"]
+    A["Consulta\ncriada/atualizada"] -->|sendSessionMessage| B["Paciente recebe\nconfirmação"]
     C["Sem slots\ndisponíveis"] -->|transferToTeam| D["Conversa vai\npara recepcionista"]
     E["Fluxo\nencerrado"] -->|completeSession| F["Atendimento\nconcluído"]
 ```
@@ -311,10 +474,10 @@ npm run dev                   # → http://localhost:3000
 
 | Risco | Mitigação |
 |-------|-----------|
-| Double booking concorrente | Re-verificação atômica com lock no `POST /api/appointments` |
+| Double booking concorrente | Re-verificação atômica com RPC `check_appointment_conflict` antes do INSERT |
 | Cross-tenant data leak | `account_id` em todas as queries + RLS no Supabase como 2ª linha |
-| API Key vazada | Armazenada com bcrypt hash — texto plano nunca persiste |
-| JWT adulterado | HS256 com `JWT_SECRET`, verificado em cada request |
+| API Key vazada | Armazenada com bcrypt hash — texto plano nunca persiste no banco |
+| JWT adulterado | HS256 com `JWT_SECRET`, verificado em cada request via `withAuth` |
 | `service_role` exposto | Só existe em API Routes server-side, nunca em variável `NEXT_PUBLIC_` |
 | Dados de pacientes em logs | Nenhum campo sensível (`phone`, `email`, `name`) é logado |
 
@@ -326,29 +489,66 @@ npm run dev                   # → http://localhost:3000
 escala-agenda/
 └── src/
     ├── app/
+    │   ├── [accountId]/
+    │   │   ├── page.tsx                          ← Agenda principal
+    │   │   ├── pacientes/page.tsx                ← Gestão de pacientes
+    │   │   └── configuracoes/page.tsx            ← Configurações da clínica
     │   └── api/
     │       ├── auth/
-    │       │   ├── url/route.ts              ← Auth humano → JWT 15min
-    │       │   └── ai/route.ts               ← Auth agente → JWT 60min
+    │       │   ├── url/route.ts                  ← Auth humano → JWT 15min
+    │       │   └── ai/route.ts                   ← Auth agente → JWT 60min
+    │       ├── agent/
+    │       │   ├── disponibilidade/route.ts      ← Habilidade: slots + prioridade
+    │       │   ├── agendar/route.ts              ← Habilidade: criar consulta
+    │       │   ├── cancelar/route.ts             ← Habilidade: cancelar
+    │       │   ├── remarcar/route.ts             ← Habilidade: reagendar
+    │       │   └── consultar/route.ts            ← Habilidade: verificar agendamento
     │       ├── appointments/
-    │       │   ├── route.ts                  ← GET lista + POST criar
-    │       │   ├── [id]/status/route.ts      ← PATCH status
-    │       │   └── check-conflicts/route.ts  ← Verificação pré-agendamento
+    │       │   ├── route.ts                      ← GET lista + POST criar
+    │       │   ├── [id]/route.ts                 ← PATCH reagendar
+    │       │   ├── [id]/status/route.ts          ← PATCH status
+    │       │   └── check-conflicts/route.ts      ← Verificação pré-agendamento
     │       ├── slots/
-    │       │   └── available/route.ts        ← Slots disponíveis
+    │       │   └── available/route.ts            ← Slots disponíveis (RPC)
     │       ├── patients/
-    │       │   └── route.ts                  ← GET busca + POST criar
+    │       │   ├── route.ts                      ← GET busca + POST criar
+    │       │   └── [id]/route.ts                 ← PATCH + DELETE
     │       ├── dentists/
-    │       │   └── priority/route.ts         ← Lista priorizada para IA
+    │       │   └── priority/route.ts             ← Lista priorizada
+    │       ├── admin/
+    │       │   ├── units/                        ← CRUD unidades
+    │       │   ├── dentists/                     ← CRUD dentistas + horários + bloqueios
+    │       │   ├── chairs/                       ← CRUD cadeiras
+    │       │   ├── procedures/                   ← CRUD procedimentos
+    │       │   └── api-keys/                     ← Gerenciar API Keys
     │       └── helena/
-    │           └── transfer/route.ts         ← Transferir conversa
-    ├── lib/
-    │   ├── supabase.ts                       ← Clients anon + service role (lazy)
-    │   ├── auth.ts                           ← JWT sign/verify + autenticadores
-    │   ├── api.ts                            ← withAuth wrapper + helpers ok/err
-    │   └── helena.ts                         ← Client da API Helena / WTS Chat
-    └── types/
-        └── database.ts                       ← Tipos gerados do Supabase
+    │           └── transfer/route.ts             ← Transferir conversa
+    ├── components/
+    │   └── agenda/
+    │       ├── AgendaShell.tsx                   ← Orquestrador principal da agenda
+    │       ├── AgendaHeader.tsx                  ← Barra superior (filtros, data, visualização)
+    │       ├── AgendaSidebar.tsx                 ← Menu lateral com navegação
+    │       ├── AppointmentBlock.tsx              ← Bloco de consulta nos views
+    │       ├── AppointmentPopover.tsx            ← Popover de detalhes ao clicar
+    │       ├── DayReportModal.tsx                ← Relatório do dia com KPIs
+    │       ├── KPIStrip.tsx                      ← Faixa de métricas rápidas
+    │       ├── modals/
+    │       │   ├── NewAppointmentModal.tsx       ← Criar nova consulta
+    │       │   └── RescheduleModal.tsx           ← Reagendar consulta existente
+    │       └── views/
+    │           ├── DailyView.tsx                 ← Visão diária por colunas
+    │           ├── WeeklyView.tsx                ← Visão semanal (7 dias)
+    │           └── ListView.tsx                  ← Visão em lista cronológica
+    ├── hooks/
+    │   ├── useAuth.ts                            ← Autenticação e JWT
+    │   ├── useAppointments.ts                    ← Fetch de consultas
+    │   └── useAnimatedMount.ts                   ← Animações de entrada/saída
+    └── lib/
+        ├── supabase.ts                           ← Clients anon + service role (lazy)
+        ├── auth.ts                               ← JWT sign/verify + autenticadores
+        ├── api.ts                                ← withAuth wrapper + helpers ok/err
+        ├── agentAuth.ts                          ← withAgentAuth (API Key direto) + normalizePhone
+        └── helena.ts                             ← Client da API Helena / WTS Chat
 ```
 
 ---
@@ -357,26 +557,33 @@ escala-agenda/
 
 ```mermaid
 gantt
-    title Roadmap Escala Agenda — Entrega Mai/2026
+    title Roadmap Escala Agenda — Mai/2026
     dateFormat  YYYY-MM-DD
+
     section Fase 1 · Backend Core
-    Schema Supabase (13 tabelas, RLS)     :done, 2026-05-19, 1d
-    Funções PG (slots + conflitos)        :done, 2026-05-19, 1d
-    9 endpoints REST                      :done, 2026-05-19, 1d
-    Integração Helena                     :done, 2026-05-19, 1d
+    Schema Supabase (13 tabelas, RLS, funções PG)  :done, 2026-05-19, 1d
+    Endpoints REST (auth, appointments, slots)      :done, 2026-05-19, 1d
+    Integração Helena / WTS Chat                   :done, 2026-05-19, 1d
 
     section Fase 2 · Admin APIs
-    CRUD unidades, cadeiras, dentistas    :active, 2026-05-20, 2d
-    Horários de trabalho + bloqueios      :2026-05-22, 2d
-    Prioridades + API Keys                :2026-05-24, 1d
+    CRUD unidades, cadeiras, dentistas             :done, 2026-05-20, 1d
+    Horários, bloqueios, prioridades, API Keys     :done, 2026-05-20, 1d
 
     section Fase 3 · Deploy
-    Vercel + env produção                 :2026-05-25, 1d
+    Vercel + variáveis de produção                 :done, 2026-05-20, 1d
 
     section Fase 4 · Interface React
-    Visão diária (colunas por dentista)   :2026-05-26, 3d
-    Visão semanal + lista de consultas    :2026-05-29, 2d
-    Theming white label                   :2026-05-31, 1d
+    Visão diária, semanal e lista                  :done, 2026-05-20, 1d
+    Modais, popovers e animações                   :done, 2026-05-20, 1d
+    Páginas pacientes e configurações              :done, 2026-05-20, 1d
+
+    section Fase 5 · Agent API
+    5 habilidades /api/agent/* com prioridade      :done, 2026-05-20, 1d
+    withAgentAuth (API Key direto, sem JWT step)   :done, 2026-05-20, 1d
+
+    section Fase 6 · Onboarding
+    Painel de onboarding para novas clínicas       :active, 2026-05-21, 2d
+    Configuração white label (tema, unidade, etc)  :2026-05-23, 1d
 ```
 
 ---
