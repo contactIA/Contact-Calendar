@@ -29,9 +29,10 @@ type Props = {
   onAppointmentClick: (appt: Appointment, el: HTMLButtonElement) => void
   onSlotClick: (dentistId: string, startIso: string) => void
   date: string
+  scrollToMinutes?: number
 }
 
-export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date }: Props) {
+export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date, scrollToMinutes }: Props) {
   const visibleDentists = selectedDentistId
     ? dentists.filter(d => d.id === selectedDentistId)
     : dentists
@@ -39,13 +40,13 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
   const totalH = (HOUR_END - HOUR_START) * SLOT_H * 2
 
-  // Scroll to 8h on mount
   const gridRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (gridRef.current) {
-      gridRef.current.scrollTop = (8 - HOUR_START) * SLOT_H * 2
-    }
-  }, [date])
+    if (!gridRef.current) return
+    const targetMinutes = scrollToMinutes ?? 8 * 60
+    const targetPx = (targetMinutes - HOUR_START * 60) * PX_PER_MIN
+    gridRef.current.scrollTop = Math.max(0, targetPx - 80)
+  }, [date, scrollToMinutes])
 
   // Current time indicator
   const now = new Date()

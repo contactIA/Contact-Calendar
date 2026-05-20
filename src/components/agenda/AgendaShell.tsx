@@ -70,6 +70,7 @@ export function AgendaShell() {
   const [listStatus, setListStatus]     = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [search, setSearch]             = useState('')
+  const [scrollToMinutes, setScrollToMinutes] = useState<number | undefined>(undefined)
 
   const { dentists, loading: loadingDentists } = useDentists()
 
@@ -116,7 +117,10 @@ export function AgendaShell() {
   }, [])
 
   const handleAppointmentSelect = useCallback((appt: Appointment) => {
+    const match = appt.start_at.match(/T(\d{2}):(\d{2})/)
+    const minutes = match ? parseInt(match[1]) * 60 + parseInt(match[2]) : 8 * 60
     setDate(new Date(appt.start_at.slice(0, 10) + 'T12:00:00'))
+    setScrollToMinutes(minutes)
     setView('day')
     setPopover({ appt, el: null })
   }, [])
@@ -156,6 +160,7 @@ export function AgendaShell() {
               date={dateStr}
               onAppointmentClick={handleAppointmentClick}
               onSlotClick={handleSlotClick}
+              scrollToMinutes={scrollToMinutes}
             />
           </div>
         )}

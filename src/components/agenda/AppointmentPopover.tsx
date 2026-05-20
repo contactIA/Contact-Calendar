@@ -82,7 +82,7 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
     <div
       ref={ref}
       className={`fixed z-50 w-72 bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden ${closing ? 'animate-popover-out' : 'animate-popover-in'}`}
-      style={anchorEl ? getPopoverPosition(anchorEl) : { top: '50%', left: '50%' }}
+      style={anchorEl ? getPopoverPosition(anchorEl) : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
     >
       {/* Gradient top bar */}
       <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#a855f7,#d946ef)' }} />
