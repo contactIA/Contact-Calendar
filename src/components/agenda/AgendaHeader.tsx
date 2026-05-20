@@ -41,9 +41,9 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
 
       {/* Date nav */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <button onClick={prev} className="w-7 h-7 flex items-center justify-center border border-violet-200 rounded-lg hover:bg-violet-50 text-violet-500 transition-colors text-base">‹</button>
-        <button onClick={() => onDateChange(new Date())} className="px-3 h-7 text-xs font-semibold text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition-colors">Hoje</button>
-        <button onClick={next} className="w-7 h-7 flex items-center justify-center border border-violet-200 rounded-lg hover:bg-violet-50 text-violet-500 transition-colors text-base">›</button>
+        <button onClick={prev} className="w-7 h-7 flex items-center justify-center border border-violet-200 rounded-lg hover:bg-violet-50 text-gray-500 transition-colors text-base">‹</button>
+        <button onClick={() => onDateChange(new Date())} className="px-3 h-7 text-xs font-semibold text-gray-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition-colors">Hoje</button>
+        <button onClick={next} className="w-7 h-7 flex items-center justify-center border border-violet-200 rounded-lg hover:bg-violet-50 text-gray-500 transition-colors text-base">›</button>
         <div className="ml-2 flex flex-col">
           <span className="text-[15px] font-bold text-gray-900 leading-tight capitalize">{dayLabel}</span>
           <span className="text-[11px] text-slate-400">{profLabel}</span>
@@ -69,13 +69,13 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
       </div>
 
       {/* View switcher */}
-      <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 flex-shrink-0">
-        {(['day', 'week', 'list'] as View[]).map(v => (
+      <div className="flex border border-violet-200 rounded-lg overflow-hidden flex-shrink-0">
+        {(['day', 'week', 'list'] as View[]).map((v, i) => (
           <button
             key={v}
             onClick={() => onViewChange(v)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-              view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`px-3 py-1.5 text-xs font-semibold transition-colors ${i > 0 ? 'border-l border-violet-200' : ''} ${
+              view === v ? 'bg-violet-600 text-white' : 'text-gray-500 hover:bg-violet-50'
             }`}
           >
             {v === 'day' ? 'Dia' : v === 'week' ? 'Semana' : 'Lista'}
