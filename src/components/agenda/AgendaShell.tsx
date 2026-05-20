@@ -88,14 +88,15 @@ export function AgendaShell() {
   // For week view, appointments already filtered server-side; just alias
   const weekAppointments = appointments
 
-  // Apply search filter
+  // Apply search filter (accent-insensitive)
   const filteredAppointments = useMemo(() => {
     if (!search.trim()) return appointments
-    const q = search.toLowerCase()
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    const q = norm(search)
     return appointments.filter(a =>
-      a.patient?.name?.toLowerCase().includes(q) ||
-      a.procedure?.name?.toLowerCase().includes(q) ||
-      a.dentist?.user?.name?.toLowerCase().includes(q)
+      norm(a.patient?.name ?? '').includes(q) ||
+      norm(a.procedure?.name ?? '').includes(q) ||
+      norm(a.dentist?.user?.name ?? '').includes(q)
     )
   }, [appointments, search])
 
