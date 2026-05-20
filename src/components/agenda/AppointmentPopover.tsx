@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { type Appointment } from '@/hooks/useAppointments'
+import { api } from '@/lib/client'
 
 const STATUS_CHIP: Record<string, { label: string; bg: string; color: string }> = {
   scheduled:   { label: 'Agendado',       bg: '#eff6ff', color: '#3b82f6' },
@@ -41,6 +42,20 @@ type Props = {
 export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusChange, onReschedule }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const { mounted, closing } = useAnimatedMount(true, 140)
+  const [wppLoading, setWppLoading] = useState(false)
+
+  async function openAtendimento() {
+    if (!phone) return
+    setWppLoading(true)
+    try {
+      const res = await api.get<{ url: string }>(`/api/helena/session?phone=${encodeURIComponent(phone)}`)
+      window.open(res.url, '_blank', 'noopener,noreferrer')
+    } catch {
+      window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer')
+    } finally {
+      setWppLoading(false)
+    }
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -136,19 +151,22 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
 
           <div className="flex gap-2">
             {phone && (
-              <a
-                href={`https://wa.me/${phone.replace(/\D/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold py-2 rounded-xl transition-opacity hover:opacity-90"
+              <button
+                onClick={openAtendimento}
+                disabled={wppLoading}
+                className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold py-2 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ background: '#25D366', color: '#fff' }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L0 24l6.318-1.506A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.885 0-3.653-.502-5.181-1.381l-.371-.22-3.751.894.924-3.646-.241-.384A9.96 9.96 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-                </svg>
-                WhatsApp
-              </a>
+                {wppLoading ? (
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L0 24l6.318-1.506A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.885 0-3.653-.502-5.181-1.381l-.371-.22-3.751.894.924-3.646-.241-.384A9.96 9.96 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                  </svg>
+                )}
+                {wppLoading ? 'Buscando...' : 'Atendimento'}
+              </button>
             )}
             {canReschedule && (
               <button
