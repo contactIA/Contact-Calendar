@@ -68,6 +68,7 @@ export function AgendaShell() {
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
   const [listPage, setListPage]         = useState(1)
   const [listStatus, setListStatus]     = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
   const [search, setSearch]             = useState('')
 
   const { dentists, loading: loadingDentists } = useDentists()
@@ -77,10 +78,10 @@ export function AgendaShell() {
   const weekEnd   = format(endOfWeek(date,   { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
   const filters = view === 'day'
-    ? { date: dateStr, dentist_id: selectedDentistId ?? undefined, status: 'all' }
+    ? { date: dateStr, dentist_id: selectedDentistId ?? undefined, status: statusFilter || 'all' }
     : view === 'week'
-    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: 'all' }
-    : { page: listPage, page_size: 50, ...(listStatus ? { status: listStatus } : { status: 'all' }) }
+    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: statusFilter || 'all' }
+    : { page: listPage, page_size: 50, status: listStatus || 'all' }
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
 
@@ -127,7 +128,7 @@ export function AgendaShell() {
           onSearch={setSearch}
         />
 
-        <KPIStrip appointments={appointments} />
+        <KPIStrip appointments={appointments} statusFilter={statusFilter} onStatusFilter={setStatusFilter} />
 
         {/* Daily column headers */}
         {view === 'day' && !loadingDentists && (
@@ -182,6 +183,8 @@ export function AgendaShell() {
         selectedDentistId={selectedDentistId}
         onDentistChange={setSelectedDentistId}
         appointments={appointments}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
       />
 
       {/* Appointment popover */}

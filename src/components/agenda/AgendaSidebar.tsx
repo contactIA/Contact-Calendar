@@ -17,17 +17,20 @@ type Props = {
   selectedDentistId: string | null
   onDentistChange: (id: string | null) => void
   appointments: Array<{ status: string; dentist?: { id: string } | null; patient?: { name: string } | null; start_at: string; procedure?: { name: string } | null }>
+  statusFilter: string
+  onStatusFilter: (status: string) => void
 }
 
 const STATUS_PILLS = [
-  { color: '#3b82f6', bg: '#eff6ff', label: 'Agendado' },
-  { color: '#10b981', bg: '#ecfdf5', label: 'Confirmado' },
-  { color: '#f59e0b', bg: '#fffbeb', label: 'Em atendimento' },
-  { color: '#6b7280', bg: '#f3f4f6', label: 'Concluído' },
-  { color: '#ef4444', bg: '#fef2f2', label: 'Cancelado' },
+  { value: 'scheduled',   color: '#3b82f6', bg: '#eff6ff', label: 'Agendado' },
+  { value: 'confirmed',   color: '#10b981', bg: '#ecfdf5', label: 'Confirmado' },
+  { value: 'in_progress', color: '#f59e0b', bg: '#fffbeb', label: 'Em atendimento' },
+  { value: 'completed',   color: '#6b7280', bg: '#f3f4f6', label: 'Concluído' },
+  { value: 'cancelled',   color: '#ef4444', bg: '#fef2f2', label: 'Cancelado' },
+  { value: 'no_show',     color: '#c026d3', bg: '#fdf2f8', label: 'Faltou' },
 ]
 
-export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange, appointments }: Props) {
+export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange, appointments, statusFilter, onStatusFilter }: Props) {
   const [viewMonth, setViewMonth] = useState(new Date(selectedDate))
   const [reportOpen, setReportOpen] = useState(false)
   const params = useParams()
@@ -143,20 +146,37 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
         </div>
       </div>
 
-      {/* Status legend pills */}
+      {/* Status filter / legend */}
       <div className="p-4 border-b border-gray-100">
-        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Legenda</p>
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_PILLS.map(item => (
-            <span
-              key={item.label}
-              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold"
-              style={{ background: item.bg, color: item.color }}
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Filtrar por status</p>
+          {statusFilter && (
+            <button
+              onClick={() => onStatusFilter('')}
+              className="text-[10px] text-violet-500 hover:text-violet-700 font-semibold transition-colors"
             >
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: item.color }} />
-              {item.label}
-            </span>
-          ))}
+              Limpar
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_PILLS.map(item => {
+            const active = statusFilter === item.value
+            return (
+              <button
+                key={item.value}
+                onClick={() => onStatusFilter(active ? '' : item.value)}
+                className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border"
+                style={active
+                  ? { background: item.color, color: '#fff', borderColor: item.color }
+                  : { background: item.bg, color: item.color, borderColor: 'transparent', opacity: 0.85 }
+                }
+              >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: active ? '#fff' : item.color }} />
+                {item.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
