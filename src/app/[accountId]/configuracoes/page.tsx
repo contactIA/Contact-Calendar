@@ -604,8 +604,8 @@ function DentistsTab() {
           <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
             <Field label="Nome completo *"><input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Dr. Nome Sobrenome" /></Field>
             {!modal.item && (
-              <Field label="ID externo *">
-                <input className={inputCls} value={externalId} onChange={e => setExternalId(e.target.value)} placeholder="ID do dentista no sistema de origem" />
+              <Field label="Email *">
+                <input className={inputCls} value={externalId} onChange={e => setExternalId(e.target.value)} placeholder="email@clinica.com" type="email" />
                 <p className="text-[11px] text-gray-400 mt-1">Usado para login via URL. Deve ser único na conta.</p>
               </Field>
             )}
