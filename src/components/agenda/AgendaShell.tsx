@@ -153,7 +153,7 @@ export function AgendaShell() {
 
         {view === 'week' && (
           <WeeklyView
-            appointments={weekAppointments}
+            appointments={filteredAppointments}
             date={dateStr}
             onAppointmentClick={handleAppointmentClick}
             onDayClick={handleDayClick}
