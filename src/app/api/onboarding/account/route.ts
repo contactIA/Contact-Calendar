@@ -5,6 +5,7 @@ import { ok, err } from '@/lib/api'
 import { z } from 'zod'
 
 const schema = z.object({
+  id:                z.string().uuid().optional(),
   name:              z.string().min(1).max(100),
   slug:              z.string().min(1).max(60).regex(/^[a-z0-9-]+$/),
   admin_name:        z.string().min(1).max(100),
@@ -12,29 +13,39 @@ const schema = z.object({
   timezone:          z.string().default('America/Sao_Paulo'),
 })
 
-// POST /api/onboarding/account — cria account + admin user e retorna JWT
-// Sem autenticação: este é o ponto de entrada para novos white labels.
-// Em produção, proteger com um secret de plataforma ou IP allowlist.
+// POST /api/onboarding/account — cria account + admin user e retorna JWT + URL pronta
+// id é opcional: se informado (vindo da Helena), usa esse UUID; caso contrário gera um novo.
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) return err(parsed.error.issues[0].message, 400)
 
-  const { name, slug, admin_name, admin_external_id, timezone } = parsed.data
+  const { id, name, slug, admin_name, admin_external_id, timezone } = parsed.data
+
+  // Se um id foi fornecido, verifica se já existe
+  if (id) {
+    const { data: existingAccount } = await supabaseAdmin
+      .from('accounts')
+      .select('id')
+      .eq('id', id)
+      .single()
+
+    if (existingAccount) return err('Conta com esse ID já existe.', 409)
+  }
 
   // Verifica slug único
-  const { data: existing } = await supabaseAdmin
+  const { data: existingSlug } = await supabaseAdmin
     .from('accounts')
     .select('id')
     .eq('slug', slug)
     .single()
 
-  if (existing) return err('Slug já está em uso. Escolha outro identificador.', 409)
+  if (existingSlug) return err('Slug já está em uso. Escolha outro identificador.', 409)
 
-  // Cria account
+  // Cria account (usa o id da Helena se fornecido, senão gera um novo)
   const { data: account, error: accErr } = await supabaseAdmin
     .from('accounts')
-    .insert({ name, slug, timezone })
+    .insert({ ...(id && { id }), name, slug, timezone })
     .select('id')
     .single()
 
@@ -57,11 +68,13 @@ export async function POST(req: NextRequest) {
     return err(userErr.message, 500)
   }
 
-  // Gera JWT para o admin continuar o onboarding autenticado
   const token = await signJwt(
     { sub: adminUser.id, accountId: account.id, role: 'admin' },
     '8h'
   )
 
-  return ok({ account_id: account.id, token }, 201)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://agenda-contact-uo8h.vercel.app'
+  const url = `${baseUrl}/${account.id}/agenda?userId=${encodeURIComponent(admin_external_id)}`
+
+  return ok({ account_id: account.id, token, url }, 201)
 }
