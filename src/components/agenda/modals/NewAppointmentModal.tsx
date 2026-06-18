@@ -97,6 +97,18 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
   }, [open])
 
+  // Ao abrir, semeia dentista/data/horário a partir do slot clicado.
+  // O modal fica sempre montado, então os inicializadores de useState rodam só
+  // uma vez (com props undefined) — sem isto, o slot clicado não chega à etapa
+  // de horário e o campo "reinicia" no default.
+  useEffect(() => {
+    if (!open) return
+    setStep('patient')
+    setSelectedDentistId(initialDentistId ?? '')
+    setSelectedDate(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
+    setStartTime(initialTime?.slice(0, 5) ?? '08:00')
+  }, [open, initialDentistId, initialDate, initialTime])
+
   useEffect(() => {
     if (patientQuery.length < 3) { setPatients([]); setSearchDone(false); return }
     const t = setTimeout(() => {
