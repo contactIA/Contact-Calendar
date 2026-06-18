@@ -30,7 +30,11 @@ type ApiKey = {
   last_used_at: string | null; created_at: string
 }
 
-type Tab = 'unidades' | 'cadeiras' | 'procedimentos' | 'profissionais' | 'api-keys'
+type Account = {
+  id: string; name: string; slug: string; timezone: string; slot_interval_minutes: number
+}
+
+type Tab = 'geral' | 'unidades' | 'cadeiras' | 'procedimentos' | 'profissionais' | 'api-keys'
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -729,9 +733,80 @@ function ApiKeysTab() {
   )
 }
 
+// ─── Geral tab ───────────────────────────────────────────────────────────────
+
+const CADENCE_OPTIONS = [10, 15, 20, 30, 45, 60]
+
+function GeralTab() {
+  const [account, setAccount] = useState<Account | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [interval, setIntervalValue] = useState(30)
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
+  const [error, setError]     = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const a = await api.get<Account>('/api/admin/account')
+      setAccount(a)
+      setIntervalValue(a.slot_interval_minutes)
+    } catch {} finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function save() {
+    setSaving(true); setError(''); setSaved(false)
+    try {
+      await api.patch('/api/admin/account', { slot_interval_minutes: interval })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro ao salvar')
+    } finally { setSaving(false) }
+  }
+
+  const dirty = !!account && account.slot_interval_minutes !== interval
+
+  return (
+    <div>
+      <SectionHeader title="Configurações gerais" />
+      {loading ? <LoadingState /> : (
+        <div className="bg-white border border-gray-100 rounded-xl px-5 py-5 space-y-5">
+          <div>
+            <Field label="Cadência da grade de horários">
+              <select className={inputCls} value={interval} onChange={e => setIntervalValue(Number(e.target.value))}>
+                {CADENCE_OPTIONS.map(v => <option key={v} value={v}>{v} minutos</option>)}
+                {!CADENCE_OPTIONS.includes(interval) && <option value={interval}>{interval} minutos</option>}
+              </select>
+            </Field>
+            <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+              De quanto em quanto tempo um horário de início é oferecido (ex.: 30 min → 14:00, 14:30, 15:00…).
+              A <strong>duração de cada procedimento</strong> continua sendo respeitada de forma independente —
+              um procedimento de 90 min reserva os 90 min, sem encaixar outra consulta no meio.
+            </p>
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex items-center gap-3">
+            <button onClick={save} disabled={saving || !dirty}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90 disabled:opacity-40 transition-opacity">
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            {saved && <span className="text-xs font-medium text-emerald-600">✓ Salvo</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'geral',          label: 'Geral',          icon: '⚙️' },
   { id: 'unidades',       label: 'Unidades',       icon: '🏥' },
   { id: 'cadeiras',       label: 'Cadeiras',        icon: '🪑' },
   { id: 'procedimentos',  label: 'Procedimentos',   icon: '🦷' },
@@ -746,7 +821,7 @@ export default function ConfiguracoesPage() {
   const accountId    = params?.accountId as string
   const userId       = searchParams?.get('userId') ?? ''
   const userQuery    = userId ? `?userId=${userId}` : ''
-  const [tab, setTab] = useState<Tab>('unidades')
+  const [tab, setTab] = useState<Tab>('geral')
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -779,6 +854,7 @@ export default function ConfiguracoesPage() {
           ))}
         </div>
 
+        {tab === 'geral'         && <GeralTab />}
         {tab === 'unidades'      && <UnitsTab />}
         {tab === 'cadeiras'      && <ChairsTab />}
         {tab === 'procedimentos' && <ProceduresTab />}

@@ -374,6 +374,7 @@ flowchart LR
 ### Administração
 | Método | Endpoint | Acesso | Descrição |
 |--------|----------|:------:|-----------|
+| `GET/PATCH` | `/api/admin/account` | Admin | Configurações gerais (cadência da grade, timezone) |
 | `GET/POST` | `/api/admin/units` | Admin | CRUD unidades |
 | `GET/POST` | `/api/admin/dentists` | Admin | CRUD dentistas |
 | `GET/POST` | `/api/admin/chairs` | Admin | CRUD cadeiras |
@@ -408,6 +409,53 @@ A especialidade do procedimento é usada como filtro hard — dentistas sem a es
 
 ---
 
+## Slots: duração real do procedimento e cadência da grade
+
+A grade de horários **respeita a duração real de cada procedimento** — não existe "30 min fixo".
+A RPC `get_available_slots` resolve a duração a partir de `procedures.duration_minutes`
+(ou de um override explícito) e **reserva o intervalo inteiro** `[início, início + duração)`.
+Um procedimento de 90 min ocupa de fato 90 min seguidos: nenhuma outra consulta encaixa no meio.
+
+A **cadência** (de quanto em quanto tempo um horário de início é oferecido) é um conceito
+separado da duração e é **configurável** — em vez de um `30` fixo no código:
+
+| Origem (precedência) | Onde | Padrão |
+|----------------------|------|--------|
+| Override por chamada | parâmetro `p_slot_interval` da RPC | — |
+| Configuração da conta | coluna `accounts.slot_interval_minutes` | `30` |
+| Fallback de segurança | dentro da função | `30` |
+
+Resolução: `COALESCE(p_slot_interval, accounts.slot_interval_minutes, 30)`.
+
+> **Por que assim, e não como a tarefa original sugeria:** a versão herdada da RPC já
+> respeitava a duração real (o slot terminava em `início + duração` e a checagem de conflito
+> cobria o intervalo inteiro). O único valor fixo remanescente era a *cadência*. Em vez de
+> apenas removê-la, transformamos o `30` num default de coluna configurável por clínica +
+> override por chamada — eliminando o hardcode sem reduzir as opções de horário.
+
+Assinatura atual:
+
+```sql
+get_available_slots(
+  p_dentist_id        uuid,
+  p_unit_id           uuid,
+  p_procedure_id      uuid,
+  p_date              date,
+  p_duration_override integer DEFAULT NULL,  -- sobrepõe a duração do procedimento
+  p_slot_interval     integer DEFAULT NULL   -- sobrepõe a cadência da conta
+)
+```
+
+Validado com teste funcional (procedimento de 90 min, expediente 09:00–12:00):
+
+| Cenário | Resultado |
+|---------|-----------|
+| 90 min, cadência 30, agenda livre | `09:00-10:30, 09:30-11:00, 10:00-11:30, 10:30-12:00` |
+| 90 min, cadência 60 (override) | `09:00-10:30, 10:00-11:30` |
+| 90 min, com consulta ocupando 10:00–11:00 | nenhum slot livre (o intervalo inteiro é respeitado) |
+
+---
+
 ## Interface React
 
 Acesso via URL parametrizada: `/{accountId}?userId={externalId}`
@@ -436,6 +484,7 @@ Acesso via URL parametrizada: `/{accountId}?userId={externalId}`
 
 | Aba | Funcionalidades |
 |-----|----------------|
+| Geral | Cadência da grade de horários (`accounts.slot_interval_minutes`) |
 | Unidades | CRUD completo de unidades físicas |
 | Cadeiras | CRUD de consultórios por unidade |
 | Procedimentos | CRUD com cor, duração e especialidade requerida |
@@ -468,7 +517,7 @@ completeSession(sessionId)            // encerrar atendimento
 ### Variáveis de ambiente
 
 ```bash
-# Supabase — projeto: escala-agenda | região: sa-east-1 (São Paulo)
+# Supabase — projeto: Contact-Calendar | ref: xcyltcfxrguvjlaqnqfd | região: sa-east-1 (São Paulo)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>      # nunca no frontend
@@ -484,12 +533,24 @@ HELENA_BASE_URL=https://api.wts.chat
 ### Instalação
 
 ```bash
-git clone https://github.com/g4bs2006/Agenda---Contact.IA.git
+git clone https://github.com/contactIA/Contact-Calendar.git
 cd escala-agenda
 npm install
 cp .env.example .env.local    # preencha as variáveis acima
 npm run dev                   # → http://localhost:3000
 ```
+
+### Banco de dados (migrations)
+
+O schema versionado vive em `supabase/migrations/`. Para recriar o banco do zero
+(ex.: novo projeto Supabase), aplique as migrations em ordem:
+
+```
+0001_init_schema.sql              # 13 tabelas, 4 enums, índices, funções e RLS
+0002_configurable_slot_cadence.sql # cadência da grade configurável (ver abaixo)
+```
+
+Após qualquer migration, regenere os tipos: `src/types/database.ts`.
 
 ---
 
