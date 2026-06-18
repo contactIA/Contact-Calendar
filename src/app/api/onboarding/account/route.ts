@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     '8h'
   )
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://agenda-contact-uo8h.vercel.app'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://contact-calendar-murex.vercel.app'
   const url = `${baseUrl}/${account.id}/agenda?userId=${encodeURIComponent(admin_external_id)}`
 
   return ok({ account_id: account.id, token, url }, 201)
