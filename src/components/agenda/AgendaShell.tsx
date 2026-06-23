@@ -120,8 +120,9 @@ export function AgendaShell() {
   }, [])
 
   const handleAppointmentSelect = useCallback((appt: Appointment) => {
-    const match = appt.start_at.match(/T(\d{2}):(\d{2})/)
-    const minutes = match ? parseInt(match[1]) * 60 + parseInt(match[2]) : 8 * 60
+    // Horário local (consistente com a posição do bloco na grade).
+    const start = new Date(appt.start_at)
+    const minutes = start.getHours() * 60 + start.getMinutes()
     setDate(new Date(appt.start_at.slice(0, 10) + 'T12:00:00'))
     setScrollToMinutes(minutes)
     setView('day')

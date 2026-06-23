@@ -16,10 +16,11 @@ function timeToMinutes(time: string) {
 }
 
 function dateToMinutes(iso: string) {
-  // Extrai hora/minuto diretamente da string UTC para evitar conversão de timezone do browser
-  const match = iso.match(/T(\d{2}):(\d{2})/)
-  if (!match) return 0
-  return parseInt(match[1]) * 60 + parseInt(match[2])
+  // Converte para o horário local (mesmo fuso usado no rótulo do bloco, na linha
+  // do "agora" e na criação de slots). Ler a string UTC crua jogava o bloco para
+  // a hora UTC (ex.: 10h local virava 13h na grade).
+  const d = new Date(iso)
+  return d.getHours() * 60 + d.getMinutes()
 }
 
 type Props = {

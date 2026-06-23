@@ -118,9 +118,10 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
                 {searchResults.slice(0, 20).map(appt => {
                   const dot = STATUS_DOT[appt.status] ?? '#94a3b8'
                   const statusLabel = STATUS_LABEL[appt.status] ?? appt.status
-                  const apptDate = appt.start_at.slice(0, 10)
-                  const apptTime = appt.start_at.slice(11, 16)
-                  const dateFormatted = format(new Date(apptDate + 'T12:00:00'), "d 'de' MMM", { locale: ptBR })
+                  // Horário local (consistente com a grade e o rótulo do bloco).
+                  const apptDateObj = new Date(appt.start_at)
+                  const apptTime = format(apptDateObj, 'HH:mm')
+                  const dateFormatted = format(apptDateObj, "d 'de' MMM", { locale: ptBR })
                   return (
                     <button
                       key={appt.id}
