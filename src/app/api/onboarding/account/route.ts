@@ -22,12 +22,19 @@ export async function POST(req: NextRequest) {
 
   const { id, name, slug, admin_name, admin_external_id, timezone } = parsed.data
 
-  // Se um id foi fornecido, verifica se já existe
-  if (id) {
+  // Deriva o id do slug: quando o slug já é um UUID (a referência da conta no
+  // white label / Helena) e nenhum id explícito é enviado, o próprio slug vira
+  // o id. Assim id e slug coincidem e a URL `/{id}/agenda` sempre bate com o
+  // que o white label conhece — evita o descasamento que quebrava o login.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const resolvedId = id ?? (UUID_RE.test(slug) ? slug : undefined)
+
+  // Se um id foi resolvido, verifica se já existe
+  if (resolvedId) {
     const { data: existingAccount } = await supabaseAdmin
       .from('accounts')
       .select('id')
-      .eq('id', id)
+      .eq('id', resolvedId)
       .single()
 
     if (existingAccount) return err('Conta com esse ID já existe.', 409)
@@ -42,10 +49,10 @@ export async function POST(req: NextRequest) {
 
   if (existingSlug) return err('Slug já está em uso. Escolha outro identificador.', 409)
 
-  // Cria account (usa o id da Helena se fornecido, senão gera um novo)
+  // Cria account (usa o id resolvido — explícito ou derivado do slug — senão gera um novo)
   const { data: account, error: accErr } = await supabaseAdmin
     .from('accounts')
-    .insert({ ...(id && { id }), name, slug, timezone })
+    .insert({ ...(resolvedId && { id: resolvedId }), name, slug, timezone })
     .select('id')
     .single()
 
