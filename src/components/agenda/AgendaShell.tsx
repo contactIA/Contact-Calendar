@@ -86,6 +86,9 @@ export function AgendaShell() {
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
 
+  // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
+  const isLoading = loading || loadingDentists
+
   // For week view, appointments already filtered server-side; just alias
   const weekAppointments = appointments
 
@@ -153,6 +156,7 @@ export function AgendaShell() {
           onAppointmentSelect={handleAppointmentSelect}
         />
 
+        <div className="relative flex flex-col flex-1 overflow-hidden">
         <KPIStrip appointments={appointments} statusFilter={statusFilter} onStatusFilter={setStatusFilter} />
 
         {/* Daily column headers */}
@@ -199,6 +203,17 @@ export function AgendaShell() {
             onStatusFilter={s => { setListStatus(s); setListPage(1) }}
           />
         )}
+
+          {/* Overlay de carregamento da agenda */}
+          {isLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-sm text-gray-500">Carregando agenda...</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Appointment popover */}
