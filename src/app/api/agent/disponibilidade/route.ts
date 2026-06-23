@@ -1,5 +1,4 @@
-import { NextRequest } from 'next/server'
-import { withAgentAuth, normalizePhone } from '@/lib/agentAuth'
+import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
 import { z } from 'zod'
@@ -7,7 +6,8 @@ import { z } from 'zod'
 const schema = z.object({
   data:                 z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   unit_id:              z.string().uuid(),
-  procedure_id:         z.string().uuid().optional(),
+  // Obrigatório: a RPC get_available_slots precisa dele para a duração do slot.
+  procedure_id:         z.string().uuid(),
   telefone:             z.string().optional(),
   quantidade_dentistas: z.coerce.number().int().min(1).max(5).default(2),
 })
@@ -20,28 +20,23 @@ export const POST = withAgentAuth(async (req, { user }) => {
 
   const { data: date, unit_id, procedure_id, telefone, quantidade_dentistas } = parsed.data
 
-  // Resolve patient_id pelo telefone (para prioridade por histórico)
+  // Resolve patient_id pelo telefone (sinal suave para priorizar por histórico).
+  // Ambiguidade aqui não bloqueia a consulta de disponibilidade: só ignoramos
+  // o histórico quando não há um match único.
   let patient_id: string | undefined
   if (telefone) {
-    const cleaned = normalizePhone(telefone)
-    const { data: patients } = await supabaseAdmin
-      .from('patients')
-      .select('id')
-      .eq('account_id', user.accountId)
-      .ilike('phone', `%${cleaned.slice(-10)}%`)
-      .limit(1)
-    patient_id = patients?.[0]?.id
+    const match = await findPatientByPhone(user.accountId, telefone)
+    if (match.status === 'one') patient_id = match.id
   }
 
   // Obtém dentistas ordenados por prioridade
-  let dentistQuery = supabaseAdmin
+  const { data: dentistUnits, error: dentistErr } = await supabaseAdmin
     .from('dentist_units')
     .select(`priority, dentist:dentists(id, color, specialty, user:users(name))`)
     .eq('unit_id', unit_id)
     .eq('account_id', user.accountId)
     .order('priority', { ascending: true })
 
-  const { data: dentistUnits, error: dentistErr } = await dentistQuery
   if (dentistErr) return err(dentistErr.message, 500)
 
   let filtered = dentistUnits ?? []
@@ -120,7 +115,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
           p_dentist_id:   d.id,
           p_unit_id:      unit_id,
           p_date:         date,
-          p_procedure_id: procedure_id as string,
+          p_procedure_id: procedure_id,
         })
         .then(res => ({ dentista_id: d.id, nome: d.nome, has_history: d.has_history, slots: res.data ?? [] }))
     )

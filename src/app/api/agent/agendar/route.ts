@@ -1,5 +1,4 @@
-import { NextRequest } from 'next/server'
-import { withAgentAuth, normalizePhone } from '@/lib/agentAuth'
+import { withAgentAuth, normalizePhone, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
 import { z } from 'zod'
@@ -27,15 +26,13 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const cleanPhone = normalizePhone(telefone)
   let patientId: string
 
-  const { data: existing } = await supabaseAdmin
-    .from('patients')
-    .select('id, name')
-    .eq('account_id', user.accountId)
-    .ilike('phone', `%${cleanPhone.slice(-10)}%`)
-    .limit(1)
+  const match = await findPatientByPhone(user.accountId, telefone)
+  if (match.status === 'many') {
+    return err('Mais de um paciente com esse telefone. Confirme os dados antes de agendar.', 409)
+  }
 
-  if (existing?.[0]) {
-    patientId = existing[0].id
+  if (match.status === 'one') {
+    patientId = match.id
   } else {
     const { data: created, error: createErr } = await supabaseAdmin
       .from('patients')
@@ -129,7 +126,14 @@ export const POST = withAgentAuth(async (req, { user }) => {
     `)
     .single()
 
-  if (error) return err(error.message, 500)
+  if (error) {
+    // 23P01 = exclusion_violation: a trava do banco barrou uma corrida que
+    // passou pela checagem acima. Conflito de horário, não erro de servidor.
+    if (error.code === '23P01') {
+      return err('Conflito de agendamento: horário acabou de ser ocupado', 409)
+    }
+    return err(error.message, 500)
+  }
 
   const dentistName  = (appt.dentist as { user: { name: string } | null } | null)?.user?.name ?? 'Dentista'
   const procedimento = (appt.procedure as { name: string } | null)?.name ?? ''

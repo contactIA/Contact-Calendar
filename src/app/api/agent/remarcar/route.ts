@@ -1,5 +1,4 @@
-import { NextRequest } from 'next/server'
-import { withAgentAuth, normalizePhone } from '@/lib/agentAuth'
+import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
 import { z } from 'zod'
@@ -21,16 +20,10 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const { telefone, agendamento_id, novo_horario, novo_dentista_id, chair_id } = parsed.data
 
   // Localiza paciente pelo telefone
-  const cleanPhone = normalizePhone(telefone)
-  const { data: patients } = await supabaseAdmin
-    .from('patients')
-    .select('id')
-    .eq('account_id', user.accountId)
-    .ilike('phone', `%${cleanPhone.slice(-10)}%`)
-    .limit(1)
-
-  if (!patients?.length) return err('Paciente não encontrado para este telefone', 404)
-  const patientId = patients[0].id
+  const match = await findPatientByPhone(user.accountId, telefone)
+  if (match.status === 'many') return err('Mais de um paciente com esse telefone. Confirme os dados antes de remarcar.', 409)
+  if (match.status === 'none') return err('Paciente não encontrado para este telefone', 404)
+  const patientId = match.id
 
   // Busca o agendamento a remarcar
   let query = supabaseAdmin
@@ -47,7 +40,8 @@ export const POST = withAgentAuth(async (req, { user }) => {
   }
 
   const { data: appts, error: fetchErr } = await query
-  if (fetchErr || !appts?.length) return err('Agendamento não encontrado', 404)
+  if (fetchErr) return err(fetchErr.message, 500)
+  if (!appts?.length) return err('Agendamento não encontrado', 404)
   const appt = appts[0]
 
   const dentistId = novo_dentista_id ?? appt.dentist_id
@@ -55,51 +49,50 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const newEnd    = new Date(newStart.getTime() + appt.duration_minutes * 60_000)
   const end_at    = newEnd.toISOString()
 
-  // Resolve cadeira
-  let resolvedChairId = chair_id ?? appt.chair_id
-  if (chair_id === undefined && novo_dentista_id) {
-    // Se mudou o dentista, revalida cadeira ou busca uma disponível
-    const { data: conflicts } = await supabaseAdmin.rpc('check_appointment_conflict', {
-      p_dentist_id: dentistId,
-      p_chair_id:   appt.chair_id,
-      p_start_at:   novo_horario,
-      p_end_at:     end_at,
-      p_exclude_id: appt.id,
-    })
-    if (conflicts?.length) {
-      // Tenta encontrar outra cadeira
-      const { data: chairs } = await supabaseAdmin
-        .from('chairs')
-        .select('id')
-        .eq('account_id', user.accountId)
-        .eq('unit_id', appt.unit_id)
-        .eq('is_active', true)
-        .order('name', { ascending: true })
+  // Resolve cadeira: usa a informada (ou a atual) se estiver livre no novo
+  // horário; caso contrário procura qualquer cadeira ativa disponível na
+  // unidade. Vale para qualquer remarcação — mudando ou não o dentista.
+  const preferredChairId = chair_id ?? appt.chair_id
+  let resolvedChairId: string | undefined = preferredChairId
 
-      resolvedChairId = undefined as unknown as string
-      for (const ch of chairs ?? []) {
-        const { data: c2 } = await supabaseAdmin.rpc('check_appointment_conflict', {
-          p_dentist_id: dentistId,
-          p_chair_id:   ch.id,
-          p_start_at:   novo_horario,
-          p_end_at:     end_at,
-          p_exclude_id: appt.id,
-        })
-        if (!c2?.length) { resolvedChairId = ch.id; break }
-      }
-      if (!resolvedChairId) return err('Nenhuma cadeira disponível no novo horário', 409)
-    }
-  }
-
-  // Verificação final de conflito
-  const { data: conflicts } = await supabaseAdmin.rpc('check_appointment_conflict', {
+  const { data: preferredConflict, error: confErr } = await supabaseAdmin.rpc('check_appointment_conflict', {
     p_dentist_id: dentistId,
-    p_chair_id:   resolvedChairId,
+    p_chair_id:   preferredChairId,
     p_start_at:   novo_horario,
     p_end_at:     end_at,
     p_exclude_id: appt.id,
   })
-  if (conflicts?.length) return err(`Conflito: ${conflicts[0].conflict_type} não disponível`, 409)
+  if (confErr) return err(confErr.message, 500)
+
+  if (preferredConflict?.length) {
+    // A cadeira preferida (ou o dentista) conflita. Se o conflito é só de
+    // cadeira, tenta outra; se for do dentista, não há o que fazer.
+    const dentistBusy = preferredConflict.some(c => c.conflict_type === 'dentist' || c.conflict_type === 'block')
+    if (dentistBusy) {
+      return err(`Conflito: ${preferredConflict[0].conflict_type} não disponível no novo horário`, 409)
+    }
+
+    resolvedChairId = undefined
+    const { data: chairs } = await supabaseAdmin
+      .from('chairs')
+      .select('id')
+      .eq('account_id', user.accountId)
+      .eq('unit_id', appt.unit_id)
+      .eq('is_active', true)
+      .order('name', { ascending: true })
+
+    for (const ch of chairs ?? []) {
+      const { data: c2 } = await supabaseAdmin.rpc('check_appointment_conflict', {
+        p_dentist_id: dentistId,
+        p_chair_id:   ch.id,
+        p_start_at:   novo_horario,
+        p_end_at:     end_at,
+        p_exclude_id: appt.id,
+      })
+      if (!c2?.length) { resolvedChairId = ch.id; break }
+    }
+    if (!resolvedChairId) return err('Nenhuma cadeira disponível no novo horário', 409)
+  }
 
   const { data: updated, error } = await supabaseAdmin
     .from('appointments')
@@ -118,7 +111,11 @@ export const POST = withAgentAuth(async (req, { user }) => {
     `)
     .single()
 
-  if (error) return err(error.message, 500)
+  if (error) {
+    // 23P01 = exclusion_violation: corrida barrada pela trava do banco.
+    if (error.code === '23P01') return err('Conflito: horário acabou de ser ocupado', 409)
+    return err(error.message, 500)
+  }
 
   const dentistName  = (updated.dentist as { user: { name: string } | null } | null)?.user?.name ?? 'Dentista'
   const procedimento = (updated.procedure as { name: string } | null)?.name ?? ''
