@@ -70,7 +70,7 @@ export function AgendaShell() {
   const [listStatus, setListStatus]     = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [search, setSearch]             = useState('')
-  const [scrollToMinutes, setScrollToMinutes] = useState<number | undefined>(undefined)
+  const [focusRequest, setFocusRequest] = useState<{ apptId: string; minutes: number; token: number } | null>(null)
 
   const { dentists, loading: loadingDentists } = useDentists()
 
@@ -120,13 +120,16 @@ export function AgendaShell() {
   }, [])
 
   const handleAppointmentSelect = useCallback((appt: Appointment) => {
-    // Horário local (consistente com a posição do bloco na grade).
+    // Vai para o DIA do agendamento (data e hora no fuso local) e dispara um
+    // "pedido de foco" one-shot, que a DailyView usa para rolar suave até o
+    // horário e destacar o bloco. O token incremental garante que o foco
+    // re-dispare mesmo para o mesmo horário. O popover não abre sozinho — a
+    // busca leva e destaca; o clique no bloco mostra os detalhes.
     const start = new Date(appt.start_at)
     const minutes = start.getHours() * 60 + start.getMinutes()
-    setDate(new Date(appt.start_at.slice(0, 10) + 'T12:00:00'))
-    setScrollToMinutes(minutes)
+    setDate(new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0))
     setView('day')
-    setPopover({ appt, el: null })
+    setFocusRequest(prev => ({ apptId: appt.id, minutes, token: (prev?.token ?? 0) + 1 }))
   }, [])
 
   return (
@@ -177,7 +180,7 @@ export function AgendaShell() {
               date={dateStr}
               onAppointmentClick={handleAppointmentClick}
               onSlotClick={handleSlotClick}
-              scrollToMinutes={scrollToMinutes}
+              focusRequest={focusRequest}
             />
           </div>
         )}
