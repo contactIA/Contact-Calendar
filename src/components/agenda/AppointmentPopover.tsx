@@ -194,10 +194,13 @@ function Detail({ icon, label, value }: { icon: string; label: string; value: st
 
 function getPopoverPosition(el: HTMLElement): React.CSSProperties {
   const rect = el.getBoundingClientRect()
-  const spaceRight = window.innerWidth - rect.right
+  const spaceLeft  = rect.left
   const spaceBelow = window.innerHeight - rect.bottom
 
-  const left = spaceRight >= 300 ? rect.right + 8 : rect.left - 296 - 8
+  // Prefere abrir à ESQUERDA do bloco (para o lado da sidebar, conteúdo estático),
+  // evitando cobrir as colunas de agendamentos da grade à direita. Cai para a
+  // direita só quando não há espaço suficiente à esquerda. Popover = w-72 (288px) + 8 de gap.
+  const left = spaceLeft >= 296 ? rect.left - 296 : rect.right + 8
   const top  = spaceBelow >= 340 ? rect.top : rect.bottom - 340
 
   return { top: Math.max(8, top), left: Math.max(8, left) }
