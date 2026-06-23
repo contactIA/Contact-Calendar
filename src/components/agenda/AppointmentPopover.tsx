@@ -59,10 +59,13 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          anchorEl && !anchorEl.contains(e.target as Node)) {
-        onClose()
-      }
+      const target = e.target as Node
+      const insidePopover = ref.current?.contains(target) ?? false
+      // anchorEl pode ser null (popover aberto pela busca, sem âncora). Nesse
+      // caso só importa o clique fora do popover — antes o clique fora nunca
+      // fechava, deixando o popover "travado" na tela.
+      const insideAnchor = anchorEl?.contains(target) ?? false
+      if (!insidePopover && !insideAnchor) onClose()
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
