@@ -709,6 +709,16 @@ export type Database = {
           start_at: string
         }[]
       }
+      find_patients_by_phone: {
+        Args: {
+          p_account_id: string
+          p_phone: string
+        }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
       search_patients: {
         Args: {
           p_account_id: string
