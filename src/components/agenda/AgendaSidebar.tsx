@@ -51,7 +51,7 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
   while (d <= gridEnd) { days.push(d); d = addDays(d, 1) }
 
   return (
-    <aside className="w-64 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col overflow-y-auto agenda-scroll">
+    <aside className="w-64 flex-shrink-0 border-r border-gray-100 bg-white flex flex-col overflow-y-auto agenda-scroll">
 
       {/* Dentist filter */}
       <div className="p-4 border-b border-gray-100">

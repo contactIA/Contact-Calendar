@@ -127,6 +127,18 @@ export function AgendaShell() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden">
+      {/* Sidebar (esquerda) */}
+      <AgendaSidebar
+        selectedDate={date}
+        onDateSelect={d => { setDate(d); setView('day') }}
+        dentists={dentists}
+        selectedDentistId={selectedDentistId}
+        onDentistChange={setSelectedDentistId}
+        appointments={appointments}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+      />
+
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         <AgendaHeader
@@ -188,18 +200,6 @@ export function AgendaShell() {
           />
         )}
       </div>
-
-      {/* Sidebar */}
-      <AgendaSidebar
-        selectedDate={date}
-        onDateSelect={d => { setDate(d); setView('day') }}
-        dentists={dentists}
-        selectedDentistId={selectedDentistId}
-        onDentistChange={setSelectedDentistId}
-        appointments={appointments}
-        statusFilter={statusFilter}
-        onStatusFilter={setStatusFilter}
-      />
 
       {/* Appointment popover */}
       {popover && (
