@@ -1,6 +1,7 @@
 import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { spDate, spTime } from '@/lib/tz'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -55,8 +56,8 @@ export const POST = withAgentAuth(async (req, { user }) => {
     tem_agendamento: true,
     proxima_consulta: {
       id:            appt.id,
-      data:          appt.start_at.slice(0, 10),
-      horario:       appt.start_at.slice(11, 16),
+      data:          spDate(appt.start_at),
+      horario:       spTime(appt.start_at),
       dentista:      dentistName,
       procedimento,
       unidade,

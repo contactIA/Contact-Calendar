@@ -1,6 +1,7 @@
 import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { spTime } from '@/lib/tz'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -123,9 +124,9 @@ export const POST = withAgentAuth(async (req, { user }) => {
 
   type Slot = { start_at: string; end_at: string; chair_id: string; chair_name: string }
 
-  // Formata horários como HH:MM
+  // Formata horários como HH:MM no fuso da clínica (start_at é UTC).
   const formatSlots = (slots: Slot[]) =>
-    slots.map(s => s.start_at?.slice(11, 16)).filter(Boolean)
+    slots.map(s => s.start_at ? spTime(s.start_at) : null).filter(Boolean)
 
   const [first, ...rest] = slotsResults
 
