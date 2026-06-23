@@ -591,10 +591,9 @@ verificado contra o código e o schema antes de ser tratado.
 > funciona — os 2 parâmetros extras da RPC (6 args no total) têm `DEFAULT NULL`,
 > então o PostgREST resolve a sobrecarga única sem ambiguidade.
 
-**Pendência operacional:** a migration `0003` precisa ser aplicada ao Supabase
-`Contact-Calendar` (`supabase db push` ou MCP `apply_migration`) para as travas
-entrarem em vigor. Até lá, a proteção contra corrida segue valendo só pelo
-fast-path (não atômico).
+**Status:** a migration `0003` já está **aplicada** ao Supabase `Contact-Calendar`
+(`xcyltcfxrguvjlaqnqfd`) — pré-voo sem sobreposições, constraints e função
+`find_patients_by_phone` verificadas em produção. As travas estão em vigor.
 
 ---
 
