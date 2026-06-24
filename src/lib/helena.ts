@@ -45,35 +45,3 @@ export async function getActiveSessionByContactId(contactId: string): Promise<st
 export function buildSessionUrl(sessionId: string): string {
   return `${FLUXODONTO_URL}/chat2/sessions/${sessionId}`
 }
-
-// Envia mensagem de texto para um contato
-export function sendText(to: string, from: string, text: string) {
-  return helenaFetch('/chat/v1/send/text', {
-    method: 'POST',
-    body: JSON.stringify({ to, from, text }),
-  })
-}
-
-// Envia mensagem dentro de uma conversa existente
-export function sendSessionMessage(sessionId: string, text: string) {
-  return helenaFetch(`/chat/v1/session/${sessionId}/message`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  })
-}
-
-// Transfere conversa para uma equipe (departamento)
-export function transferToTeam(sessionId: string, departmentId: string) {
-  return helenaFetch(`/chat/v1/session/${sessionId}/transfer`, {
-    method: 'PUT',
-    body: JSON.stringify({ type: 'DEPARTMENT', newDepartmentId: departmentId }),
-  })
-}
-
-// Conclui atendimento (reativa se chegar nova mensagem)
-export function completeSession(sessionId: string, reactivateOnNewMessage = true) {
-  return helenaFetch(`/chat/v1/session/${sessionId}/complete`, {
-    method: 'PUT',
-    body: JSON.stringify({ reactivateOnNewMessage }),
-  })
-}
