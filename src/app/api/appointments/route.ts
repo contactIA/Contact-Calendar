@@ -1,5 +1,6 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { notifyAppointmentBooked } from '@/lib/helena'
 import { z } from 'zod'
 
 const createSchema = z.object({
@@ -170,6 +171,28 @@ export const POST = withAuth(async (req, ctx) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: confirmação imediata + lembrete agendado na Helena.
+  const { data: info } = await supabaseAdmin
+    .from('appointments')
+    .select('patient:patients(name, phone), dentist:dentists(user:users(name)), procedure:procedures(name)')
+    .eq('id', data.id)
+    .single()
+
+  if (info) {
+    const patient = info.patient as { name: string | null; phone: string | null } | null
+    const reminderId = await notifyAppointmentBooked(ctx.user.accountId, {
+      phone:         patient?.phone,
+      startAtISO:    data.start_at,
+      patientName:   patient?.name,
+      dentistName:   (info.dentist as { user: { name: string } | null } | null)?.user?.name,
+      procedureName: (info.procedure as { name: string } | null)?.name,
+    })
+    if (reminderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: reminderId }).eq('id', data.id)
+    }
+  }
 
   return ok(data, 201)
 }, ['admin', 'receptionist', 'ai_agent'])

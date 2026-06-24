@@ -184,5 +184,128 @@ export async function tagContactByStatus(
   }
 }
 
+// --- Templates / lembrete ---------------------------------------------------
+
+// Dados da consulta usados para preencher o template e decidir o lembrete.
+export type AppointmentNotifyInfo = {
+  phone:          string | null | undefined
+  startAtISO:     string
+  patientName?:   string | null
+  dentistName?:   string | null
+  procedureName?: string | null
+}
+
+// Monta os parâmetros do template a partir da consulta.
+// ATENÇÃO: as chaves abaixo precisam casar com as variáveis do template
+// APROVADO no canal da clínica — isso varia por template e deve ser calibrado
+// com um template real. Como o envio é best-effort, um formato incompatível
+// apenas falha e loga, sem afetar o agendamento.
+function buildAppointmentParams(info: AppointmentNotifyInfo): Record<string, string> {
+  const start = new Date(info.startAtISO)
+  const fmt = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', ...opts }).format(start)
+  return {
+    nome:         info.patientName ?? '',
+    data:         fmt({ day: '2-digit', month: '2-digit', year: 'numeric' }),
+    hora:         fmt({ hour: '2-digit', minute: '2-digit' }),
+    profissional: info.dentistName ?? '',
+    procedimento: info.procedureName ?? '',
+  }
+}
+
+// Envia um template imediatamente para um contato.
+export function sendTemplate(
+  token: string,
+  args: { to: string; from: string; templateId: string; parameters?: Record<string, string> },
+) {
+  return helenaFetch(token, '/chat/v1/send/template', {
+    method: 'POST',
+    body: JSON.stringify({
+      to:         args.to.replace(/\D/g, ''),
+      from:       args.from,
+      templateId: args.templateId,
+      parameters: args.parameters,
+    }),
+  })
+}
+
+// Agenda um template para uma data/hora. Retorna o id da mensagem agendada.
+export async function scheduleTemplate(
+  token: string,
+  args: { to: string; from: string; templateId: string; scheduling: string; templateParams?: Record<string, string> },
+): Promise<string | null> {
+  const data = await helenaFetch(token, '/chat/v1/scheduled-message', {
+    method: 'POST',
+    body: JSON.stringify({
+      to:             args.to.replace(/\D/g, ''),
+      from:           args.from,
+      type:           'TEMPLATE',
+      templateId:     args.templateId,
+      scheduling:     args.scheduling,
+      templateParams: args.templateParams,
+    }),
+  })
+  return data?.id ?? null
+}
+
+// Cancela uma mensagem agendada (só funciona enquanto ela está "agendada").
+export function cancelScheduledMessage(token: string, id: string) {
+  return helenaFetch(token, `/chat/v1/scheduled-message/${id}/cancel`, { method: 'POST' })
+}
+
+// Best-effort: ao criar a consulta, etiqueta como agendada, envia a confirmação
+// imediata e agenda o lembrete. Retorna o id do lembrete (para guardar no
+// agendamento e poder cancelar depois) ou null. NUNCA lança.
+export async function notifyAppointmentBooked(
+  accountId: string,
+  info: AppointmentNotifyInfo,
+): Promise<string | null> {
+  try {
+    if (!info.phone) return null
+    const integ = await getAccountIntegration(accountId)
+    if (!integ || !integ.helena_channel) return null
+
+    const token = integ.helena_token!
+    const params = buildAppointmentParams(info)
+
+    if (integ.tag_scheduled) {
+      await setContactTags(token, info.phone, [integ.tag_scheduled], 'InsertIfNotExists').catch(() => {})
+    }
+
+    if (integ.confirm_template_id) {
+      await sendTemplate(token, {
+        to: info.phone, from: integ.helena_channel, templateId: integ.confirm_template_id, parameters: params,
+      }).catch(e => console.error('[helena] confirmação falhou:', e instanceof Error ? e.message : e))
+    }
+
+    if (integ.reminder_template_id) {
+      const remindAt = new Date(new Date(info.startAtISO).getTime() - integ.reminder_lead_hours * 3_600_000)
+      // Só agenda se o lembrete cair no futuro (consulta marcada com antecedência).
+      if (remindAt.getTime() > Date.now()) {
+        return await scheduleTemplate(token, {
+          to: info.phone, from: integ.helena_channel, templateId: integ.reminder_template_id,
+          scheduling: remindAt.toISOString(), templateParams: params,
+        })
+      }
+    }
+    return null
+  } catch (e) {
+    console.error('[helena] notifyAppointmentBooked falhou:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+// Best-effort: cancela o lembrete agendado (ao cancelar a consulta). NUNCA lança.
+export async function cancelReminder(accountId: string, reminderMessageId: string | null | undefined): Promise<void> {
+  try {
+    if (!reminderMessageId) return
+    const integ = await getAccountIntegration(accountId)
+    if (!integ) return
+    await cancelScheduledMessage(integ.helena_token!, reminderMessageId)
+  } catch (e) {
+    console.error('[helena] cancelReminder falhou:', e instanceof Error ? e.message : e)
+  }
+}
+
 // Exporta o fetch para os módulos de feature (contato, etiquetas, templates).
 export { helenaFetch }

@@ -1,6 +1,7 @@
 import { withAgentAuth, normalizePhone, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { notifyAppointmentBooked } from '@/lib/helena'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -137,6 +138,20 @@ export const POST = withAgentAuth(async (req, { user }) => {
 
   const dentistName  = (appt.dentist as { user: { name: string } | null } | null)?.user?.name ?? 'Dentista'
   const procedimento = (appt.procedure as { name: string } | null)?.name ?? ''
+
+  // Best-effort: confirmação imediata + lembrete agendado na Helena.
+  const reminderId = await notifyAppointmentBooked(user.accountId, {
+    phone:         cleanPhone,
+    startAtISO:    appt.start_at,
+    patientName:   (appt.patient as { name: string } | null)?.name,
+    dentistName,
+    procedureName: procedimento,
+  })
+  if (reminderId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: reminderId }).eq('id', appt.id)
+  }
+
   const dataFormatada = new Date(appt.start_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' })
   const horaFormatada = new Date(appt.start_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
 
