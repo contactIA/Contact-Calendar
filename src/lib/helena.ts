@@ -141,5 +141,48 @@ export async function syncPatientContact(
   }
 }
 
+// Gerencia etiquetas de um contato pelo telefone. operation:
+// InsertIfNotExists (adiciona), DeleteIfExists (remove) ou ReplaceAll (substitui).
+export function setContactTags(
+  token: string,
+  phone: string,
+  tagNames: string[],
+  operation: 'InsertIfNotExists' | 'DeleteIfExists' | 'ReplaceAll' = 'InsertIfNotExists',
+) {
+  const clean = phone.replace(/\D/g, '')
+  return helenaFetch(token, `/core/v1/contact/phonenumber/${clean}/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ tagNames, operation }),
+  })
+}
+
+// Mapeia o status do agendamento para o campo de etiqueta configurado na conta.
+const STATUS_TAG_FIELD: Partial<Record<string, 'tag_scheduled' | 'tag_completed' | 'tag_no_show'>> = {
+  scheduled: 'tag_scheduled',
+  completed: 'tag_completed',
+  no_show:   'tag_no_show',
+}
+
+// Best-effort: aplica a etiqueta correspondente ao status no contato do paciente.
+// NUNCA lança — falha na Helena não pode quebrar a mudança de status.
+export async function tagContactByStatus(
+  accountId: string,
+  phone: string | null | undefined,
+  status: string,
+): Promise<void> {
+  try {
+    if (!phone) return
+    const field = STATUS_TAG_FIELD[status]
+    if (!field) return
+    const integ = await getAccountIntegration(accountId)
+    if (!integ) return
+    const tag = integ[field]
+    if (!tag) return
+    await setContactTags(integ.helena_token!, phone, [tag], 'InsertIfNotExists')
+  } catch (e) {
+    console.error('[helena] tagContactByStatus falhou:', e instanceof Error ? e.message : e)
+  }
+}
+
 // Exporta o fetch para os módulos de feature (contato, etiquetas, templates).
 export { helenaFetch }

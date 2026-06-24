@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { tagContactByStatus } from '@/lib/helena'
 import { z } from 'zod'
 
 const bodySchema = z.object({
@@ -32,7 +32,7 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   // Garante que o appointment pertence à conta
   const { data: existing } = await supabaseAdmin
     .from('appointments')
-    .select('id, status')
+    .select('id, status, patient:patients(phone)')
     .eq('id', id)
     .eq('account_id', ctx.user.accountId)
     .single()
@@ -56,6 +56,10 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: etiqueta o contato conforme o novo status (não bloqueia).
+  const patient = existing.patient as { phone: string | null } | null
+  await tagContactByStatus(ctx.user.accountId, patient?.phone, status)
 
   return ok(data)
 })
