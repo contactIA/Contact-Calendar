@@ -97,5 +97,49 @@ export function buildSessionUrl(sessionId: string): string {
   return `${FLUXODONTO_URL}/chat2/sessions/${sessionId}`
 }
 
+// Cria ou atualiza um contato pelo telefone (upsert determinístico: consulta
+// se já existe → PUT por telefone; senão → POST cria).
+export async function upsertContact(
+  token: string,
+  contact: { phone: string; name?: string | null; email?: string | null },
+) {
+  const clean = contact.phone.replace(/\D/g, '')
+  const body = {
+    name:  contact.name ?? undefined,
+    email: contact.email ?? undefined,
+  }
+  const existing = await getContactByPhone(token, clean)
+  if (existing) {
+    return helenaFetch(token, `/core/v1/contact/phonenumber/${clean}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+  return helenaFetch(token, '/core/v1/contact', {
+    method: 'POST',
+    body: JSON.stringify({ ...body, phoneNumber: clean }),
+  })
+}
+
+// Best-effort: sincroniza o paciente como contato na Helena. NUNCA lança — uma
+// falha de integração não pode quebrar o cadastro/edição do paciente.
+export async function syncPatientContact(
+  accountId: string,
+  patient: { phone?: string | null; name?: string | null; email?: string | null },
+): Promise<void> {
+  try {
+    if (!patient.phone) return
+    const integ = await getAccountIntegration(accountId)
+    if (!integ || !integ.sync_contacts) return
+    await upsertContact(integ.helena_token!, {
+      phone: patient.phone,
+      name:  patient.name,
+      email: patient.email,
+    })
+  } catch (e) {
+    console.error('[helena] syncPatientContact falhou:', e instanceof Error ? e.message : e)
+  }
+}
+
 // Exporta o fetch para os módulos de feature (contato, etiquetas, templates).
 export { helenaFetch }

@@ -1,5 +1,6 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { syncPatientContact } from '@/lib/helena'
 import { z } from 'zod'
 
 const updateSchema = z.object({
@@ -26,6 +27,10 @@ export const PATCH = withAuth(async (req, ctx, params) => {
 
   if (error) return err(error.message, 500)
   if (!data) return err('Not found', 404)
+
+  // Best-effort: reflete as mudanças no contato da Helena (não bloqueia a edição).
+  await syncPatientContact(ctx.user.accountId, data)
+
   return ok(data)
 }, ['admin', 'receptionist'])
 
