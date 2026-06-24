@@ -141,18 +141,18 @@ export async function syncPatientContact(
   }
 }
 
-// Gerencia etiquetas de um contato pelo telefone. operation:
-// InsertIfNotExists (adiciona), DeleteIfExists (remove) ou ReplaceAll (substitui).
+// Gerencia etiquetas de um contato pelo telefone (por ID — robusto a renome).
+// operation: InsertIfNotExists (adiciona), DeleteIfExists (remove) ou ReplaceAll.
 export function setContactTags(
   token: string,
   phone: string,
-  tagNames: string[],
+  tagIds: string[],
   operation: 'InsertIfNotExists' | 'DeleteIfExists' | 'ReplaceAll' = 'InsertIfNotExists',
 ) {
   const clean = phone.replace(/\D/g, '')
   return helenaFetch(token, `/core/v1/contact/phonenumber/${clean}/tags`, {
     method: 'POST',
-    body: JSON.stringify({ tagNames, operation }),
+    body: JSON.stringify({ tagIds, operation }),
   })
 }
 
@@ -335,6 +335,64 @@ export async function cancelReminder(accountId: string, reminderMessageId: strin
   } catch (e) {
     console.error('[helena] cancelReminder falhou:', e instanceof Error ? e.message : e)
   }
+}
+
+// --- Listas para a tela de configuração ------------------------------------
+
+export type HelenaOption = { id: string; name: string }
+export type HelenaChannel = { id: string; name: string; phone: string }
+
+// Carrega só o token da conta, independente do flag enabled — a tela de config
+// precisa listar canais/etiquetas/templates antes mesmo de ligar a integração.
+export async function getHelenaTokenForAccount(accountId: string): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabaseAdmin as any)
+    .from('account_integrations')
+    .select('helena_token')
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return data?.helena_token ?? null
+}
+
+type RawRow = Record<string, unknown>
+function normalizeList(data: unknown): RawRow[] {
+  if (Array.isArray(data)) return data as RawRow[]
+  const obj = data as RawRow | null
+  if (obj && Array.isArray(obj.items)) return obj.items as RawRow[]
+  if (obj && Array.isArray(obj.data))  return obj.data as RawRow[]
+  return []
+}
+const asStr = (v: unknown): string | undefined => (v == null ? undefined : String(v))
+
+// Etiquetas disponíveis na conta Helena.
+export async function listTags(token: string): Promise<HelenaOption[]> {
+  const rows = normalizeList(await helenaFetch(token, '/core/v1/tag'))
+  return rows
+    .map(t => ({ id: asStr(t.id) ?? '', name: asStr(t.name) ?? asStr(t.title) ?? asStr(t.id) ?? '' }))
+    .filter(t => t.id)
+}
+
+// Templates de WhatsApp aprovados na conta Helena.
+export async function listTemplates(token: string): Promise<HelenaOption[]> {
+  const rows = normalizeList(await helenaFetch(token, '/chat/v1/template?ApprovedOnly=true&PageSize=100'))
+  return rows
+    .map(t => ({ id: asStr(t.id) ?? '', name: asStr(t.name) ?? asStr(t.friendlyName) ?? asStr(t.title) ?? asStr(t.id) ?? '' }))
+    .filter(t => t.id)
+}
+
+// Canais de WhatsApp da conta. `phone` é o valor usado como `from` no envio.
+export async function listChannels(token: string): Promise<HelenaChannel[]> {
+  const rows = normalizeList(await helenaFetch(token, '/chat/v1/channel?ChannelType=Whatsapp'))
+  return rows
+    .map(c => {
+      const phone = asStr(c.phone) ?? asStr(c.phoneNumber) ?? asStr(c.number) ?? ''
+      return {
+        id:    asStr(c.id) ?? '',
+        name:  asStr(c.name) ?? asStr(c.friendlyName) ?? phone ?? asStr(c.id) ?? '',
+        phone,
+      }
+    })
+    .filter(c => c.id)
 }
 
 // Exporta o fetch para os módulos de feature (contato, etiquetas, templates).
