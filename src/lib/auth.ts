@@ -64,10 +64,10 @@ export async function authenticateAiAgent(apiKey: string, accountId: string) {
     .update({ last_used_at: new Date().toISOString() })
     .eq('id', matched.id)
 
-  const token = await signJwt(
-    { sub: 'ai_agent', accountId, role: 'ai_agent' },
-    '60m'
-  )
+  const payload: Omit<JwtPayload, 'iat' | 'exp'> = { sub: 'ai_agent', accountId, role: 'ai_agent' }
+  const token = await signJwt(payload, '60m')
 
-  return { token, expiresIn: 3600 }
+  // Devolve também o payload: o middleware do agente usa o contexto direto,
+  // sem precisar reverificar o JWT que ele mesmo acabou de assinar.
+  return { token, expiresIn: 3600, payload }
 }

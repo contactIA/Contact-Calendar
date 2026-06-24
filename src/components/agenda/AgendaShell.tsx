@@ -70,7 +70,7 @@ export function AgendaShell() {
   const [listStatus, setListStatus]     = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [search, setSearch]             = useState('')
-  const [scrollToMinutes, setScrollToMinutes] = useState<number | undefined>(undefined)
+  const [focusRequest, setFocusRequest] = useState<{ apptId: string; minutes: number; token: number } | null>(null)
 
   const { dentists, loading: loadingDentists } = useDentists()
 
@@ -85,6 +85,9 @@ export function AgendaShell() {
     : { page: listPage, page_size: 50, status: listStatus || 'all' }
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
+
+  // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
+  const isLoading = loading || loadingDentists
 
   // For week view, appointments already filtered server-side; just alias
   const weekAppointments = appointments
@@ -117,16 +120,32 @@ export function AgendaShell() {
   }, [])
 
   const handleAppointmentSelect = useCallback((appt: Appointment) => {
-    const match = appt.start_at.match(/T(\d{2}):(\d{2})/)
-    const minutes = match ? parseInt(match[1]) * 60 + parseInt(match[2]) : 8 * 60
-    setDate(new Date(appt.start_at.slice(0, 10) + 'T12:00:00'))
-    setScrollToMinutes(minutes)
+    // Vai para o DIA do agendamento (data e hora no fuso local) e dispara um
+    // "pedido de foco" one-shot, que a DailyView usa para rolar suave até o
+    // horário e destacar o bloco. O token incremental garante que o foco
+    // re-dispare mesmo para o mesmo horário. O popover não abre sozinho — a
+    // busca leva e destaca; o clique no bloco mostra os detalhes.
+    const start = new Date(appt.start_at)
+    const minutes = start.getHours() * 60 + start.getMinutes()
+    setDate(new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0))
     setView('day')
-    setPopover({ appt, el: null })
+    setFocusRequest(prev => ({ apptId: appt.id, minutes, token: (prev?.token ?? 0) + 1 }))
   }, [])
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden">
+      {/* Sidebar (esquerda) */}
+      <AgendaSidebar
+        selectedDate={date}
+        onDateSelect={d => { setDate(d); setView('day') }}
+        dentists={dentists}
+        selectedDentistId={selectedDentistId}
+        onDentistChange={setSelectedDentistId}
+        appointments={appointments}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+      />
+
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         <AgendaHeader
@@ -141,6 +160,7 @@ export function AgendaShell() {
           onAppointmentSelect={handleAppointmentSelect}
         />
 
+        <div className="relative flex flex-col flex-1 overflow-hidden">
         <KPIStrip appointments={appointments} statusFilter={statusFilter} onStatusFilter={setStatusFilter} />
 
         {/* Daily column headers */}
@@ -160,7 +180,7 @@ export function AgendaShell() {
               date={dateStr}
               onAppointmentClick={handleAppointmentClick}
               onSlotClick={handleSlotClick}
-              scrollToMinutes={scrollToMinutes}
+              focusRequest={focusRequest}
             />
           </div>
         )}
@@ -187,19 +207,18 @@ export function AgendaShell() {
             onStatusFilter={s => { setListStatus(s); setListPage(1) }}
           />
         )}
-      </div>
 
-      {/* Sidebar */}
-      <AgendaSidebar
-        selectedDate={date}
-        onDateSelect={d => { setDate(d); setView('day') }}
-        dentists={dentists}
-        selectedDentistId={selectedDentistId}
-        onDentistChange={setSelectedDentistId}
-        appointments={appointments}
-        statusFilter={statusFilter}
-        onStatusFilter={setStatusFilter}
-      />
+          {/* Overlay de carregamento da agenda */}
+          {isLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-sm text-gray-500">Carregando agenda...</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Appointment popover */}
       {popover && (

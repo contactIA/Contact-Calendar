@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { type Appointment } from '@/hooks/useAppointments'
 import { type Dentist } from '@/hooks/useDentists'
 import { AppointmentBlock } from '../AppointmentBlock'
@@ -16,10 +16,11 @@ function timeToMinutes(time: string) {
 }
 
 function dateToMinutes(iso: string) {
-  // Extrai hora/minuto diretamente da string UTC para evitar conversão de timezone do browser
-  const match = iso.match(/T(\d{2}):(\d{2})/)
-  if (!match) return 0
-  return parseInt(match[1]) * 60 + parseInt(match[2])
+  // Converte para o horário local (mesmo fuso usado no rótulo do bloco, na linha
+  // do "agora" e na criação de slots). Ler a string UTC crua jogava o bloco para
+  // a hora UTC (ex.: 10h local virava 13h na grade).
+  const d = new Date(iso)
+  return d.getHours() * 60 + d.getMinutes()
 }
 
 type Props = {
@@ -29,10 +30,10 @@ type Props = {
   onAppointmentClick: (appt: Appointment, el: HTMLButtonElement) => void
   onSlotClick: (dentistId: string, startIso: string) => void
   date: string
-  scrollToMinutes?: number
+  focusRequest?: { apptId: string; minutes: number; token: number } | null
 }
 
-export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date, scrollToMinutes }: Props) {
+export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date, focusRequest }: Props) {
   const visibleDentists = selectedDentistId
     ? dentists.filter(d => d.id === selectedDentistId)
     : dentists
@@ -41,12 +42,35 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
   const totalH = (HOUR_END - HOUR_START) * SLOT_H * 2
 
   const gridRef = useRef<HTMLDivElement>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const lastFocusToken = useRef<number | null>(null)
+
+  // Scroll padrão ao abrir/trocar de dia (manhã) — exceto quando há um foco de
+  // busca pendente, caso em que o efeito de foco abaixo cuida do scroll.
   useEffect(() => {
-    if (!gridRef.current) return
-    const targetMinutes = scrollToMinutes ?? 8 * 60
-    const targetPx = (targetMinutes - HOUR_START * 60) * PX_PER_MIN
-    gridRef.current.scrollTop = Math.max(0, targetPx - 80)
-  }, [date, scrollToMinutes])
+    const grid = gridRef.current
+    if (!grid) return
+    if (focusRequest && focusRequest.token !== lastFocusToken.current) return
+    const targetPx = (8 * 60 - HOUR_START * 60) * PX_PER_MIN
+    grid.scrollTop = Math.max(0, targetPx - 80)
+  }, [date, focusRequest])
+
+  // Foco vindo da busca: rola suave até centralizar o horário e destaca o
+  // agendamento por ~2s. O token (one-shot) evita re-rolar em navegações
+  // normais de dia e permite refocar o mesmo horário.
+  useEffect(() => {
+    if (!focusRequest || focusRequest.token === lastFocusToken.current) return
+    lastFocusToken.current = focusRequest.token
+    const grid = gridRef.current
+    if (grid) {
+      const targetPx = (focusRequest.minutes - HOUR_START * 60) * PX_PER_MIN
+      const top = targetPx - grid.clientHeight / 2 + SLOT_H / 2
+      grid.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    }
+    setHighlightId(focusRequest.apptId)
+    const t = setTimeout(() => setHighlightId(null), 2200)
+    return () => clearTimeout(t)
+  }, [focusRequest])
 
   // Current time indicator
   const now = new Date()
@@ -126,6 +150,7 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
                     topPx={topPx}
                     heightPx={heightPx}
                     isBlocked={false}
+                    isHighlighted={appt.id === highlightId}
                     onClick={e => onAppointmentClick(appt, e.currentTarget)}
                   />
                 )

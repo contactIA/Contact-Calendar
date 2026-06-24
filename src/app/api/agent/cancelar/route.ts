@@ -1,5 +1,4 @@
-import { NextRequest } from 'next/server'
-import { withAgentAuth, normalizePhone } from '@/lib/agentAuth'
+import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
 import { z } from 'zod'
@@ -18,22 +17,16 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const { telefone, agendamento_id } = parsed.data
 
   // Localiza paciente pelo telefone
-  const cleanPhone = normalizePhone(telefone)
-  const { data: patients } = await supabaseAdmin
-    .from('patients')
-    .select('id')
-    .eq('account_id', user.accountId)
-    .ilike('phone', `%${cleanPhone.slice(-10)}%`)
-    .limit(1)
-
-  if (!patients?.length) return err('Paciente não encontrado para este telefone', 404)
-  const patientId = patients[0].id
+  const match = await findPatientByPhone(user.accountId, telefone)
+  if (match.status === 'many') return err('Mais de um paciente com esse telefone. Confirme os dados antes de prosseguir.', 409)
+  if (match.status === 'none') return err('Paciente não encontrado para este telefone', 404)
+  const patientId = match.id
 
   let appointmentId = agendamento_id
 
   // Se não informado, busca a próxima consulta agendada
   if (!appointmentId) {
-    const { data: upcoming } = await supabaseAdmin
+    const { data: upcoming, error: upcomingErr } = await supabaseAdmin
       .from('appointments')
       .select('id, start_at, dentist:dentists(user:users(name)), procedure:procedures(name)')
       .eq('account_id', user.accountId)
@@ -43,6 +36,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
       .order('start_at', { ascending: true })
       .limit(1)
 
+    if (upcomingErr) return err(upcomingErr.message, 500)
     if (!upcoming?.length) return err('Nenhum agendamento futuro encontrado para este paciente', 404)
     appointmentId = upcoming[0].id
   }

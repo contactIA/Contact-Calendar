@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server'
-import { withAgentAuth, normalizePhone } from '@/lib/agentAuth'
+import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { spDate, spTime } from '@/lib/tz'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -16,21 +16,15 @@ export const POST = withAgentAuth(async (req, { user }) => {
 
   const { telefone } = parsed.data
 
-  const cleanPhone = normalizePhone(telefone)
-  const { data: patients } = await supabaseAdmin
-    .from('patients')
-    .select('id, name')
-    .eq('account_id', user.accountId)
-    .ilike('phone', `%${cleanPhone.slice(-10)}%`)
-    .limit(1)
-
-  if (!patients?.length) {
+  const match = await findPatientByPhone(user.accountId, telefone)
+  if (match.status === 'many') {
+    return err('Mais de um paciente com esse telefone. Confirme os dados antes de prosseguir.', 409)
+  }
+  if (match.status === 'none') {
     return ok({ tem_agendamento: false, proxima_consulta: null, mensagem: 'Paciente não encontrado' })
   }
 
-  const patient = patients[0]
-
-  const { data: upcoming } = await supabaseAdmin
+  const { data: upcoming, error: upcomingErr } = await supabaseAdmin
     .from('appointments')
     .select(`
       id, start_at, end_at, status, duration_minutes,
@@ -39,11 +33,13 @@ export const POST = withAgentAuth(async (req, { user }) => {
       unit:units(name)
     `)
     .eq('account_id', user.accountId)
-    .eq('patient_id', patient.id)
+    .eq('patient_id', match.id)
     .in('status', ['scheduled', 'confirmed', 'in_progress'])
     .gte('start_at', new Date().toISOString())
     .order('start_at', { ascending: true })
     .limit(1)
+
+  if (upcomingErr) return err(upcomingErr.message, 500)
 
   if (!upcoming?.length) {
     return ok({ tem_agendamento: false, proxima_consulta: null, mensagem: 'Nenhum agendamento futuro encontrado' })
@@ -60,8 +56,8 @@ export const POST = withAgentAuth(async (req, { user }) => {
     tem_agendamento: true,
     proxima_consulta: {
       id:            appt.id,
-      data:          appt.start_at.slice(0, 10),
-      horario:       appt.start_at.slice(11, 16),
+      data:          spDate(appt.start_at),
+      horario:       spTime(appt.start_at),
       dentista:      dentistName,
       procedimento,
       unidade,

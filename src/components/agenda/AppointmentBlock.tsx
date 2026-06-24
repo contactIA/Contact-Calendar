@@ -20,9 +20,12 @@ type Props = {
   heightPx: number
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
   isBlocked?: boolean
+  isHighlighted?: boolean
 }
 
-export function AppointmentBlock({ appointment, topPx, heightPx, onClick }: Props) {
+const HIGHLIGHT_SHADOW = '0 0 0 3px #a855f7, 0 8px 22px rgba(168,85,247,.45)'
+
+export function AppointmentBlock({ appointment, topPx, heightPx, onClick, isHighlighted }: Props) {
   const isBlocked = appointment.status === 'cancelled' && !appointment.patient
   const s = STATUS_STYLES[appointment.status] ?? STATUS_STYLES.scheduled
   const compact = heightPx < 44
@@ -53,7 +56,8 @@ export function AppointmentBlock({ appointment, topPx, heightPx, onClick }: Prop
         cursor: 'pointer',
         overflow: 'hidden',
         textAlign: 'left',
-        zIndex: 10,
+        zIndex: isHighlighted ? 11 : 10,
+        boxShadow: isHighlighted ? HIGHLIGHT_SHADOW : undefined,
         transition: 'box-shadow .15s, transform .15s',
         fontFamily: 'inherit',
       }}
@@ -64,7 +68,8 @@ export function AppointmentBlock({ appointment, topPx, heightPx, onClick }: Prop
       }}
       onMouseLeave={e => {
         const el = e.currentTarget as HTMLElement
-        el.style.boxShadow = 'none'
+        // Mantém o anel de destaque se ainda estiver em foco pela busca.
+        el.style.boxShadow = isHighlighted ? HIGHLIGHT_SHADOW : 'none'
         el.style.transform = 'none'
       }}
     >

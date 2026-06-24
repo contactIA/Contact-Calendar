@@ -546,9 +546,15 @@ O schema versionado vive em `supabase/migrations/`. Para recriar o banco do zero
 (ex.: novo projeto Supabase), aplique as migrations em ordem:
 
 ```
-0001_init_schema.sql              # 13 tabelas, 4 enums, índices, funções e RLS
-0002_configurable_slot_cadence.sql # cadência da grade configurável (ver abaixo)
+0001_init_schema.sql                # 13 tabelas, 4 enums, índices, funções e RLS
+0002_configurable_slot_cadence.sql  # cadência da grade configurável (ver abaixo)
+0003_appointment_overlap_guard.sql  # trava anti-corrida + match de telefone (ver "Correções")
 ```
+
+> **Atenção à 0003:** ela cria constraints `EXCLUDE` em `appointments`. Como
+> `EXCLUDE` não aceita `NOT VALID`, a migration falha se já houver agendamentos
+> ativos sobrepostos no banco. Em base limpa não há impacto; havendo dados
+> legados, resolva as sobreposições antes de aplicar.
 
 Após qualquer migration, regenere os tipos: `src/types/database.ts`.
 
@@ -558,12 +564,36 @@ Após qualquer migration, regenere os tipos: `src/types/database.ts`.
 
 | Risco | Mitigação |
 |-------|-----------|
-| Double booking concorrente | Re-verificação atômica com RPC `check_appointment_conflict` antes do INSERT |
+| Double booking concorrente | Constraints `EXCLUDE` (btree_gist) em `appointments` garantem no banco que dois agendamentos ativos não se sobreponham por dentista ou cadeira; a checagem com `check_appointment_conflict` continua como fast-path amigável (migration 0003) |
 | Cross-tenant data leak | `account_id` em todas as queries + RLS no Supabase como 2ª linha |
 | API Key vazada | Armazenada com bcrypt hash — texto plano nunca persiste no banco |
 | JWT adulterado | HS256 com `JWT_SECRET`, verificado em cada request via `withAuth` |
 | `service_role` exposto | Só existe em API Routes server-side, nunca em variável `NEXT_PUBLIC_` |
 | Dados de pacientes em logs | Nenhum campo sensível (`phone`, `email`, `name`) é logado |
+
+---
+
+## Correções (API do agente `/api/agent/*`)
+
+Revisão da API do agente de IA e respectivas correções. Cada item abaixo foi
+verificado contra o código e o schema antes de ser tratado.
+
+| # | Severidade | Problema | Correção |
+|---|------------|----------|----------|
+| 1 | Alta | **Race condition (TOCTOU) no agendamento.** `check_appointment_conflict` e o `INSERT`/`UPDATE` eram operações separadas; dois pedidos simultâneos no mesmo slot passavam os dois. | Constraints `EXCLUDE` (btree_gist) em `appointments` (migration 0003) tornam a sobreposição impossível no banco. `agendar`/`remarcar` convertem o `exclusion_violation` (código `23P01`) em **HTTP 409**. |
+| 2 | Média | **Match de paciente por telefone frágil.** Era `ILIKE '%últimos 10 dígitos%'` — match por substring que colide entre pacientes e escolhia um às cegas com `.limit(1)`. | RPC `find_patients_by_phone` compara somente dígitos (ignora DDI/DDD/máscara) e o helper `findPatientByPhone` retorna `none`/`one`/`many`. Telefone ambíguo agora devolve **409** (em `disponibilidade`, apenas ignora o histórico, sem bloquear). |
+| 3 | Média | **`remarcar` não buscava cadeira alternativa** quando só o horário mudava: se a cadeira original estivesse ocupada no novo horário, retornava 409 direto. | Passa a procurar qualquer cadeira ativa livre na unidade sempre que a cadeira preferida conflita — só retorna 409 quando o conflito é do **dentista**/bloqueio ou não há cadeira livre. |
+| 4 | Baixa | **Erros do Supabase engolidos.** Várias leituras faziam `const { data } = ...` sem checar `error`, mascarando falha de banco como "não encontrado". | Leituras passam a checar `error` e retornam **500** real. |
+| 5 | Baixa | **`procedure_id` opcional em `disponibilidade`**, mas a RPC `get_available_slots` o exige (sem default) e o SQL precisa dele para a duração do slot. | `procedure_id` passou a ser **obrigatório** no schema do endpoint. |
+| 6 | Baixa | **Limpezas.** Imports `NextRequest` não usados; `let` desnecessário; o middleware do agente assinava um JWT e o reverificava no mesmo request. | Imports/variáveis removidos; `authenticateAiAgent` devolve o payload e `withAgentAuth` usa o contexto direto. |
+
+> **Não era bug:** a chamada de `get_available_slots` com 4 argumentos nomeados
+> funciona — os 2 parâmetros extras da RPC (6 args no total) têm `DEFAULT NULL`,
+> então o PostgREST resolve a sobrecarga única sem ambiguidade.
+
+**Status:** a migration `0003` já está **aplicada** ao Supabase `Contact-Calendar`
+(`xcyltcfxrguvjlaqnqfd`) — pré-voo sem sobreposições, constraints e função
+`find_patients_by_phone` verificadas em produção. As travas estão em vigor.
 
 ---
 
