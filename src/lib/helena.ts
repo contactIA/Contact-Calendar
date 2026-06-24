@@ -295,6 +295,36 @@ export async function notifyAppointmentBooked(
   }
 }
 
+// Best-effort: ao remarcar, cancela o lembrete antigo e agenda um novo para o
+// novo horário. Retorna o id do novo lembrete (ou null). NUNCA lança.
+export async function rescheduleReminder(
+  accountId: string,
+  oldReminderId: string | null | undefined,
+  info: AppointmentNotifyInfo,
+): Promise<string | null> {
+  try {
+    const integ = await getAccountIntegration(accountId)
+    if (!integ) return null
+
+    if (oldReminderId) {
+      await cancelScheduledMessage(integ.helena_token!, oldReminderId).catch(() => {})
+    }
+
+    if (!integ.helena_channel || !integ.reminder_template_id || !info.phone) return null
+
+    const remindAt = new Date(new Date(info.startAtISO).getTime() - integ.reminder_lead_hours * 3_600_000)
+    if (remindAt.getTime() <= Date.now()) return null
+
+    return await scheduleTemplate(integ.helena_token!, {
+      to: info.phone, from: integ.helena_channel, templateId: integ.reminder_template_id,
+      scheduling: remindAt.toISOString(), templateParams: buildAppointmentParams(info),
+    })
+  } catch (e) {
+    console.error('[helena] rescheduleReminder falhou:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 // Best-effort: cancela o lembrete agendado (ao cancelar a consulta). NUNCA lança.
 export async function cancelReminder(accountId: string, reminderMessageId: string | null | undefined): Promise<void> {
   try {
