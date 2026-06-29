@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
-import { format, addMinutes, parse } from 'date-fns'
+import { format } from 'date-fns'
 import { api } from '@/lib/client'
 import { type Dentist } from '@/hooks/useDentists'
+import { type Slot } from '@/hooks/useSlots'
+import { spTime } from '@/lib/tz'
+import { SlotPicker } from './SlotPicker'
 
 type Patient   = { id: string; name: string; phone: string | null }
 type Procedure = { id: string; name: string; duration_minutes: number; color: string }
 type Unit      = { id: string; name: string }
-type Chair     = { id: string; name: string; unit_id: string }
 
 type Props = {
   open: boolean
@@ -51,30 +53,17 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
   // Step 2 — details
   const [procedures, setProcedures]           = useState<Procedure[]>([])
   const [units, setUnits]                     = useState<Unit[]>([])
-  const [chairs, setChairs]                   = useState<Chair[]>([])
   const [selectedDentistId, setSelectedDentistId]   = useState(initialDentistId ?? '')
   const [selectedProcedureId, setSelectedProcedureId] = useState('')
   const [selectedUnitId, setSelectedUnitId]   = useState('')
-  const [selectedChairId, setSelectedChairId] = useState('')
   const [selectedDate, setSelectedDate]       = useState(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
 
-  // Step 3 — time
-  const [startTime, setStartTime]         = useState(initialTime?.slice(0, 5) ?? '08:00')
+  // Step 3 — horário: o slot escolhido na grade (carrega start_at + cadeira sugerida).
+  const [selectedSlot, setSelectedSlot]   = useState<Slot | null>(null)
   const [durationMin, setDurationMin]     = useState(30)
 
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
-
-  // Chairs filtered by selected unit
-  const unitChairs = useMemo(
-    () => chairs.filter(c => !selectedUnitId || c.unit_id === selectedUnitId),
-    [chairs, selectedUnitId]
-  )
-
-  // Auto-select first chair when unit changes
-  useEffect(() => {
-    setSelectedChairId(unitChairs[0]?.id ?? '')
-  }, [selectedUnitId, chairs])
 
   // Auto-fill duration from procedure
   useEffect(() => {
@@ -82,19 +71,16 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     if (proc) setDurationMin(proc.duration_minutes)
   }, [selectedProcedureId, procedures])
 
-  // Computed end time label
-  const endTimeLabel = useMemo(() => {
-    try {
-      const base = parse(`${selectedDate} ${startTime}`, 'yyyy-MM-dd HH:mm', new Date())
-      return format(addMinutes(base, durationMin), 'HH:mm')
-    } catch { return '—' }
-  }, [selectedDate, startTime, durationMin])
+  // Rótulo do fim a partir do slot escolhido (já vem no fuso da clínica).
+  const endTimeLabel = useMemo(
+    () => (selectedSlot ? spTime(selectedSlot.end_at) : '—'),
+    [selectedSlot]
+  )
 
   useEffect(() => {
     if (!open) return
     api.get<Procedure[]>('/api/procedures').then(setProcedures).catch(() => {})
     api.get<Unit[]>('/api/units').then(setUnits).catch(() => {})
-    api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
   }, [open])
 
   // Ao abrir, semeia dentista/data/horário a partir do slot clicado.
@@ -106,8 +92,14 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     setStep('patient')
     setSelectedDentistId(initialDentistId ?? '')
     setSelectedDate(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
-    setStartTime(initialTime?.slice(0, 5) ?? '08:00')
+    setSelectedSlot(null)
   }, [open, initialDentistId, initialDate, initialTime])
+
+  // Trocar dentista/unidade/procedimento/data invalida o slot escolhido —
+  // a grade vai recarregar com outros horários.
+  useEffect(() => {
+    setSelectedSlot(null)
+  }, [selectedDentistId, selectedUnitId, selectedProcedureId, selectedDate])
 
   useEffect(() => {
     if (patientQuery.length < 3) { setPatients([]); setSearchDone(false); return }
@@ -125,9 +117,9 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     setNewName(''); setNewPhone(''); setNewEmail(''); setNewBirth('')
     setPatientError(null); setSavingPatient(false)
     setSelectedDentistId(initialDentistId ?? '')
-    setSelectedProcedureId(''); setSelectedUnitId(''); setSelectedChairId('')
+    setSelectedProcedureId(''); setSelectedUnitId('')
     setSelectedDate(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
-    setStartTime(initialTime?.slice(0, 5) ?? '08:00')
+    setSelectedSlot(null)
     setDurationMin(30)
     setError(null); setSaving(false)
   }
@@ -151,17 +143,17 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
   }
 
   async function handleConfirm() {
-    if (!selectedPatient || !selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId) return
+    if (!selectedPatient || !selectedDentistId || !selectedUnitId || !selectedProcedureId || !selectedSlot) return
     setSaving(true); setError(null)
     try {
-      const start_at = new Date(`${selectedDate}T${startTime}:00`).toISOString()
+      // O slot já traz o instante exato (UTC) e a cadeira sugerida — sem digitação.
       await onConfirm({
         patient_id:       selectedPatient.id,
         dentist_id:       selectedDentistId,
         unit_id:          selectedUnitId,
-        chair_id:         selectedChairId,
+        chair_id:         selectedSlot.chair_id,
         procedure_id:     selectedProcedureId,
-        start_at,
+        start_at:         selectedSlot.start_at,
         duration_minutes: durationMin,
       })
       reset(); onClose()
@@ -289,23 +281,13 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
                   {dentists.map(d => <option key={d.id} value={d.id}>{d.user?.name}</option>)}
                 </select>
               </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Unidade">
-                  <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
-                    <option value="">Selecionar...</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Cadeira">
-                  <select value={selectedChairId} onChange={e => setSelectedChairId(e.target.value)}
-                    disabled={!selectedUnitId}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40">
-                    <option value="">Selecionar...</option>
-                    {unitChairs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Unidade">
+                <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+                  <option value="">Selecionar...</option>
+                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
               <Field label="Procedimento">
                 <select value={selectedProcedureId} onChange={e => setSelectedProcedureId(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
@@ -324,36 +306,37 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
               </Field>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Início">
-                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                </Field>
-                <Field label="Duração (min)">
-                  <input type="number" min={5} step={5} value={durationMin}
-                    onChange={e => setDurationMin(Math.max(5, Number(e.target.value)))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                </Field>
-              </div>
+              <Field label="Horários livres">
+                <SlotPicker
+                  dentistId={selectedDentistId}
+                  unitId={selectedUnitId}
+                  procedureId={selectedProcedureId}
+                  date={selectedDate}
+                  selected={selectedSlot}
+                  onSelect={setSelectedSlot}
+                />
+              </Field>
 
-              {/* Resumo visual */}
-              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Início</p>
-                  <p className="text-xl font-bold text-gray-800">{startTime}</p>
-                </div>
-                <div className="flex-1 mx-3 flex flex-col items-center">
-                  <div className="h-px w-full bg-gray-300 relative">
-                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">
-                      {durationMin} min
+              {/* Resumo visual do slot escolhido */}
+              {selectedSlot && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div className="text-center">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Início</p>
+                    <p className="text-xl font-bold text-gray-800">{spTime(selectedSlot.start_at)}</p>
+                  </div>
+                  <div className="flex-1 mx-3 flex flex-col items-center">
+                    <div className="h-px w-full bg-gray-300 relative">
+                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">
+                        {durationMin} min · {selectedSlot.chair_name}
+                      </div>
                     </div>
                   </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fim</p>
+                    <p className="text-xl font-bold text-gray-800">{endTimeLabel}</p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fim</p>
-                  <p className="text-xl font-bold text-gray-800">{endTimeLabel}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -382,7 +365,7 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
           {step === 'details' && (
             <button
-              disabled={!selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId}
+              disabled={!selectedDentistId || !selectedUnitId || !selectedProcedureId}
               onClick={() => setStep('time')}
               className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
               Definir horário
@@ -390,7 +373,7 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
           )}
 
           {step === 'time' && (
-            <button disabled={saving} onClick={handleConfirm}
+            <button disabled={saving || !selectedSlot} onClick={handleConfirm}
               className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
               {saving ? 'Agendando...' : 'Confirmar agendamento'}
             </button>
