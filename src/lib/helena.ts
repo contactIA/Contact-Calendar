@@ -2,11 +2,12 @@ const BASE_URL = process.env.HELENA_BASE_URL ?? 'https://api.wts.chat'
 const TOKEN = process.env.HELENA_API_TOKEN!
 const FLUXODONTO_URL = process.env.FLUXODONTO_URL ?? 'https://app.fluxodonto.com'
 
-async function helenaFetch(path: string, options: RequestInit = {}) {
+// token param overrides the global TOKEN (CRM API uses a separate token)
+async function helenaFetch(path: string, options: RequestInit = {}, token?: string) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Authorization': `Bearer ${TOKEN}`,
+      'Authorization': `Bearer ${token ?? TOKEN}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
@@ -18,7 +19,8 @@ async function helenaFetch(path: string, options: RequestInit = {}) {
   return res.json()
 }
 
-// Busca contato pelo telefone — retorna o id do contato ou null
+// ─── Chat / Contact API ───────────────────────────────────────────────────────
+
 export async function getContactByPhone(phone: string): Promise<string | null> {
   try {
     const clean = phone.replace(/\D/g, '')
@@ -29,7 +31,6 @@ export async function getContactByPhone(phone: string): Promise<string | null> {
   }
 }
 
-// Busca a sessão ativa mais recente de um contato — retorna o session id ou null
 export async function getActiveSessionByContactId(contactId: string): Promise<string | null> {
   try {
     const data = await helenaFetch(
@@ -41,12 +42,10 @@ export async function getActiveSessionByContactId(contactId: string): Promise<st
   }
 }
 
-// Monta a URL de atendimento no Fluxodonto
 export function buildSessionUrl(sessionId: string): string {
   return `${FLUXODONTO_URL}/chat2/sessions/${sessionId}`
 }
 
-// Envia mensagem de texto para um contato
 export function sendText(to: string, from: string, text: string) {
   return helenaFetch('/chat/v1/send/text', {
     method: 'POST',
@@ -54,7 +53,6 @@ export function sendText(to: string, from: string, text: string) {
   })
 }
 
-// Envia mensagem dentro de uma conversa existente
 export function sendSessionMessage(sessionId: string, text: string) {
   return helenaFetch(`/chat/v1/session/${sessionId}/message`, {
     method: 'POST',
@@ -62,7 +60,6 @@ export function sendSessionMessage(sessionId: string, text: string) {
   })
 }
 
-// Transfere conversa para uma equipe (departamento)
 export function transferToTeam(sessionId: string, departmentId: string) {
   return helenaFetch(`/chat/v1/session/${sessionId}/transfer`, {
     method: 'PUT',
@@ -70,10 +67,139 @@ export function transferToTeam(sessionId: string, departmentId: string) {
   })
 }
 
-// Conclui atendimento (reativa se chegar nova mensagem)
 export function completeSession(sessionId: string, reactivateOnNewMessage = true) {
   return helenaFetch(`/chat/v1/session/${sessionId}/complete`, {
     method: 'PUT',
     body: JSON.stringify({ reactivateOnNewMessage }),
   })
+}
+
+// ─── CRM Types ────────────────────────────────────────────────────────────────
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  totalItems: number
+  totalPages: number
+  hasMorePages: boolean
+  pageNumber: number
+  pageSize: number
+}
+
+export interface Panel {
+  id: string
+  title: string
+  description: string | null
+  key: string
+  archived: boolean
+  scope: 'COMPANY' | 'USER'
+  type: 'MANAGEMENT' | string
+  overdueCardCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PanelCard {
+  id: string
+  title: string
+  description: string | null
+  stepId: string | null
+  panelId: string
+  tagIds: string[] | null
+  contactId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CardNote {
+  id: string
+  cardId: string
+  panelId: string
+  userId: string
+  text: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MoveCardInput {
+  stepId?: string
+  /** Always send the full current description to avoid overwriting with blank. */
+  description?: string
+  /** Helena merges tags — never replaces. Pass only the IDs you want to add. */
+  tagIds?: string[]
+}
+
+// ─── CRM / Panel API ──────────────────────────────────────────────────────────
+
+export function listPanels(token: string): Promise<PaginatedResponse<Panel>> {
+  return helenaFetch('/crm/v2/panel', {}, token)
+}
+
+export function getPanel(id: string, token: string): Promise<Panel> {
+  return helenaFetch(`/crm/v1/panel/${id}`, {}, token)
+}
+
+export function listPanelCards(
+  panelId: string,
+  token: string,
+  page = 1,
+  pageSize = 100
+): Promise<PaginatedResponse<PanelCard>> {
+  return helenaFetch(
+    `/crm/v1/panel/card?PanelId=${panelId}&Page=${page}&PageSize=${pageSize}`,
+    {},
+    token
+  )
+}
+
+export async function getCardByContact(
+  panelId: string,
+  contactId: string,
+  token: string
+): Promise<PanelCard | null> {
+  const data: PaginatedResponse<PanelCard> = await helenaFetch(
+    `/crm/v1/panel/card?PanelId=${panelId}&ContactId=${contactId}&PageSize=1`,
+    {},
+    token
+  )
+  return data.items[0] ?? null
+}
+
+// fields array tells Helena which properties to update — only include what changed
+export function moveCard(
+  cardId: string,
+  updates: MoveCardInput,
+  token: string
+): Promise<void> {
+  const fields: string[] = []
+  if (updates.stepId !== undefined) fields.push('StepId')
+  if (updates.description !== undefined) fields.push('Description')
+  if (updates.tagIds !== undefined) fields.push('TagIds')
+
+  return helenaFetch(
+    `/crm/v2/panel/card/${cardId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ fields, ...updates }),
+    },
+    token
+  )
+}
+
+export function getCardNotes(
+  cardId: string,
+  token: string
+): Promise<PaginatedResponse<CardNote>> {
+  return helenaFetch(`/crm/v1/panel/card/${cardId}/note`, {}, token)
+}
+
+export function createCardNote(
+  cardId: string,
+  text: string,
+  token: string
+): Promise<CardNote> {
+  return helenaFetch(
+    `/crm/v1/panel/card/${cardId}/note`,
+    { method: 'POST', body: JSON.stringify({ text }) },
+    token
+  )
 }

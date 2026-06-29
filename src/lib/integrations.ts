@@ -85,7 +85,7 @@ export async function getIntegration(
     id: data.id,
     account_id: data.account_id,
     provider: data.provider as IntegrationProvider,
-    secrets: decrypted as IntegrationSecrets,
+    secrets: decrypted as unknown as IntegrationSecrets,
     panel_id: data.panel_id,
     is_active: data.is_active,
   }
