@@ -16,6 +16,7 @@ export type AccountIntegration = {
   tag_scheduled:        string | null
   tag_completed:        string | null
   tag_no_show:          string | null
+  panel_id:             string | null
 }
 
 // Carrega a config da conta. Retorna null quando a integração não está
@@ -32,6 +33,16 @@ export async function getAccountIntegration(accountId: string): Promise<AccountI
 
   if (!data || !data.helena_enabled || !data.helena_token) return null
   return data as AccountIntegration
+}
+
+export async function getHelenaTokenForAccount(accountId: string): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabaseAdmin as any)
+    .from('account_integrations')
+    .select('helena_token')
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return data?.helena_token ?? null
 }
 
 // Backoff em 429: a Helena limita por conta (1000/5min + 200/5s burst). Respeita
@@ -68,6 +79,8 @@ async function helenaFetch(token: string, path: string, options: RequestInit = {
   }
 }
 
+// ─── Chat / Contact API ───────────────────────────────────────────────────────
+
 // Busca contato pelo telefone — retorna o id do contato ou null
 export async function getContactByPhone(token: string, phone: string): Promise<string | null> {
   try {
@@ -92,9 +105,36 @@ export async function getActiveSessionByContactId(token: string, contactId: stri
   }
 }
 
-// Monta a URL de atendimento no Fluxodonto
 export function buildSessionUrl(sessionId: string): string {
   return `${FLUXODONTO_URL}/chat2/sessions/${sessionId}`
+}
+
+export function sendText(token: string, to: string, from: string, text: string) {
+  return helenaFetch(token, '/chat/v1/send/text', {
+    method: 'POST',
+    body: JSON.stringify({ to, from, text }),
+  })
+}
+
+export function sendSessionMessage(token: string, sessionId: string, text: string) {
+  return helenaFetch(token, `/chat/v1/session/${sessionId}/message`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function transferToTeam(token: string, sessionId: string, departmentId: string) {
+  return helenaFetch(token, `/chat/v1/session/${sessionId}/transfer`, {
+    method: 'PUT',
+    body: JSON.stringify({ type: 'DEPARTMENT', newDepartmentId: departmentId }),
+  })
+}
+
+export function completeSession(token: string, sessionId: string, reactivateOnNewMessage = true) {
+  return helenaFetch(token, `/chat/v1/session/${sessionId}/complete`, {
+    method: 'PUT',
+    body: JSON.stringify({ reactivateOnNewMessage }),
+  })
 }
 
 // Cria ou atualiza um contato pelo telefone (upsert determinístico: consulta
@@ -131,18 +171,12 @@ export async function syncPatientContact(
     if (!patient.phone) return
     const integ = await getAccountIntegration(accountId)
     if (!integ || !integ.sync_contacts) return
-    await upsertContact(integ.helena_token!, {
-      phone: patient.phone,
-      name:  patient.name,
-      email: patient.email,
-    })
+    await upsertContact(integ.helena_token!, { phone: patient.phone, name: patient.name, email: patient.email })
   } catch (e) {
     console.error('[helena] syncPatientContact falhou:', e instanceof Error ? e.message : e)
   }
 }
 
-// Gerencia etiquetas de um contato pelo telefone (por ID — robusto a renome).
-// operation: InsertIfNotExists (adiciona), DeleteIfExists (remove) ou ReplaceAll.
 export function setContactTags(
   token: string,
   phone: string,
@@ -156,15 +190,12 @@ export function setContactTags(
   })
 }
 
-// Mapeia o status do agendamento para o campo de etiqueta configurado na conta.
 const STATUS_TAG_FIELD: Partial<Record<string, 'tag_scheduled' | 'tag_completed' | 'tag_no_show'>> = {
   scheduled: 'tag_scheduled',
   completed: 'tag_completed',
   no_show:   'tag_no_show',
 }
 
-// Best-effort: aplica a etiqueta correspondente ao status no contato do paciente.
-// NUNCA lança — falha na Helena não pode quebrar a mudança de status.
 export async function tagContactByStatus(
   accountId: string,
   phone: string | null | undefined,
@@ -184,9 +215,8 @@ export async function tagContactByStatus(
   }
 }
 
-// --- Templates / lembrete ---------------------------------------------------
+// ─── Templates / lembrete ────────────────────────────────────────────────────
 
-// Dados da consulta usados para preencher o template e decidir o lembrete.
 export type AppointmentNotifyInfo = {
   phone:          string | null | undefined
   startAtISO:     string
@@ -195,11 +225,6 @@ export type AppointmentNotifyInfo = {
   procedureName?: string | null
 }
 
-// Monta os parâmetros do template a partir da consulta.
-// ATENÇÃO: as chaves abaixo precisam casar com as variáveis do template
-// APROVADO no canal da clínica — isso varia por template e deve ser calibrado
-// com um template real. Como o envio é best-effort, um formato incompatível
-// apenas falha e loga, sem afetar o agendamento.
 function buildAppointmentParams(info: AppointmentNotifyInfo): Record<string, string> {
   const start = new Date(info.startAtISO)
   const fmt = (opts: Intl.DateTimeFormatOptions) =>
@@ -213,7 +238,6 @@ function buildAppointmentParams(info: AppointmentNotifyInfo): Record<string, str
   }
 }
 
-// Envia um template imediatamente para um contato.
 export function sendTemplate(
   token: string,
   args: { to: string; from: string; templateId: string; parameters?: Record<string, string> },
@@ -221,41 +245,33 @@ export function sendTemplate(
   return helenaFetch(token, '/chat/v1/send/template', {
     method: 'POST',
     body: JSON.stringify({
-      to:         args.to.replace(/\D/g, ''),
-      from:       args.from,
-      templateId: args.templateId,
-      parameters: args.parameters,
+      to: args.to.replace(/\D/g, ''), from: args.from,
+      templateId: args.templateId, parameters: args.parameters,
     }),
   })
 }
 
-// Agenda um template para uma data/hora. Retorna o id da mensagem agendada.
 export async function scheduleTemplate(
   token: string,
-  args: { to: string; from: string; templateId: string; scheduling: string; templateParams?: Record<string, string> },
+  args: {
+    to: string; from: string; templateId: string
+    scheduling: string; templateParams?: Record<string, string>
+  },
 ): Promise<string | null> {
   const data = await helenaFetch(token, '/chat/v1/scheduled-message', {
     method: 'POST',
     body: JSON.stringify({
-      to:             args.to.replace(/\D/g, ''),
-      from:           args.from,
-      type:           'TEMPLATE',
-      templateId:     args.templateId,
-      scheduling:     args.scheduling,
-      templateParams: args.templateParams,
+      to: args.to.replace(/\D/g, ''), from: args.from, type: 'TEMPLATE',
+      templateId: args.templateId, scheduling: args.scheduling, templateParams: args.templateParams,
     }),
   })
   return data?.id ?? null
 }
 
-// Cancela uma mensagem agendada (só funciona enquanto ela está "agendada").
 export function cancelScheduledMessage(token: string, id: string) {
   return helenaFetch(token, `/chat/v1/scheduled-message/${id}/cancel`, { method: 'POST' })
 }
 
-// Best-effort: ao criar a consulta, etiqueta como agendada, envia a confirmação
-// imediata e agenda o lembrete. Retorna o id do lembrete (para guardar no
-// agendamento e poder cancelar depois) ou null. NUNCA lança.
 export async function notifyAppointmentBooked(
   accountId: string,
   info: AppointmentNotifyInfo,
@@ -264,23 +280,19 @@ export async function notifyAppointmentBooked(
     if (!info.phone) return null
     const integ = await getAccountIntegration(accountId)
     if (!integ || !integ.helena_channel) return null
-
     const token = integ.helena_token!
     const params = buildAppointmentParams(info)
-
     if (integ.tag_scheduled) {
       await setContactTags(token, info.phone, [integ.tag_scheduled], 'InsertIfNotExists').catch(() => {})
     }
-
     if (integ.confirm_template_id) {
       await sendTemplate(token, {
-        to: info.phone, from: integ.helena_channel, templateId: integ.confirm_template_id, parameters: params,
+        to: info.phone, from: integ.helena_channel,
+        templateId: integ.confirm_template_id, parameters: params,
       }).catch(e => console.error('[helena] confirmação falhou:', e instanceof Error ? e.message : e))
     }
-
     if (integ.reminder_template_id) {
       const remindAt = new Date(new Date(info.startAtISO).getTime() - integ.reminder_lead_hours * 3_600_000)
-      // Só agenda se o lembrete cair no futuro (consulta marcada com antecedência).
       if (remindAt.getTime() > Date.now()) {
         return await scheduleTemplate(token, {
           to: info.phone, from: integ.helena_channel, templateId: integ.reminder_template_id,
@@ -295,8 +307,6 @@ export async function notifyAppointmentBooked(
   }
 }
 
-// Best-effort: ao remarcar, cancela o lembrete antigo e agenda um novo para o
-// novo horário. Retorna o id do novo lembrete (ou null). NUNCA lança.
 export async function rescheduleReminder(
   accountId: string,
   oldReminderId: string | null | undefined,
@@ -305,16 +315,12 @@ export async function rescheduleReminder(
   try {
     const integ = await getAccountIntegration(accountId)
     if (!integ) return null
-
     if (oldReminderId) {
       await cancelScheduledMessage(integ.helena_token!, oldReminderId).catch(() => {})
     }
-
     if (!integ.helena_channel || !integ.reminder_template_id || !info.phone) return null
-
     const remindAt = new Date(new Date(info.startAtISO).getTime() - integ.reminder_lead_hours * 3_600_000)
     if (remindAt.getTime() <= Date.now()) return null
-
     return await scheduleTemplate(integ.helena_token!, {
       to: info.phone, from: integ.helena_channel, templateId: integ.reminder_template_id,
       scheduling: remindAt.toISOString(), templateParams: buildAppointmentParams(info),
@@ -325,8 +331,10 @@ export async function rescheduleReminder(
   }
 }
 
-// Best-effort: cancela o lembrete agendado (ao cancelar a consulta). NUNCA lança.
-export async function cancelReminder(accountId: string, reminderMessageId: string | null | undefined): Promise<void> {
+export async function cancelReminder(
+  accountId: string,
+  reminderMessageId: string | null | undefined,
+): Promise<void> {
   try {
     if (!reminderMessageId) return
     const integ = await getAccountIntegration(accountId)
@@ -337,34 +345,21 @@ export async function cancelReminder(accountId: string, reminderMessageId: strin
   }
 }
 
-// --- Listas para a tela de configuração ------------------------------------
+// ─── Listas para tela de configuração ────────────────────────────────────────
 
-export type HelenaOption = { id: string; name: string }
+export type HelenaOption  = { id: string; name: string }
 export type HelenaChannel = { id: string; name: string; phone: string }
-
-// Carrega só o token da conta, independente do flag enabled — a tela de config
-// precisa listar canais/etiquetas/templates antes mesmo de ligar a integração.
-export async function getHelenaTokenForAccount(accountId: string): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (supabaseAdmin as any)
-    .from('account_integrations')
-    .select('helena_token')
-    .eq('account_id', accountId)
-    .maybeSingle()
-  return data?.helena_token ?? null
-}
 
 type RawRow = Record<string, unknown>
 function normalizeList(data: unknown): RawRow[] {
   if (Array.isArray(data)) return data as RawRow[]
   const obj = data as RawRow | null
   if (obj && Array.isArray(obj.items)) return obj.items as RawRow[]
-  if (obj && Array.isArray(obj.data))  return obj.data as RawRow[]
+  if (obj && Array.isArray(obj.data))  return obj.data  as RawRow[]
   return []
 }
 const asStr = (v: unknown): string | undefined => (v == null ? undefined : String(v))
 
-// Etiquetas disponíveis na conta Helena.
 export async function listTags(token: string): Promise<HelenaOption[]> {
   const rows = normalizeList(await helenaFetch(token, '/core/v1/tag'))
   return rows
@@ -372,15 +367,16 @@ export async function listTags(token: string): Promise<HelenaOption[]> {
     .filter(t => t.id)
 }
 
-// Templates de WhatsApp aprovados na conta Helena.
 export async function listTemplates(token: string): Promise<HelenaOption[]> {
   const rows = normalizeList(await helenaFetch(token, '/chat/v1/template?ApprovedOnly=true&PageSize=100'))
   return rows
-    .map(t => ({ id: asStr(t.id) ?? '', name: asStr(t.name) ?? asStr(t.friendlyName) ?? asStr(t.title) ?? asStr(t.id) ?? '' }))
+    .map(t => ({
+      id:   asStr(t.id) ?? '',
+      name: asStr(t.name) ?? asStr(t.friendlyName) ?? asStr(t.title) ?? asStr(t.id) ?? '',
+    }))
     .filter(t => t.id)
 }
 
-// Canais de WhatsApp da conta. `phone` é o valor usado como `from` no envio.
 export async function listChannels(token: string): Promise<HelenaChannel[]> {
   const rows = normalizeList(await helenaFetch(token, '/chat/v1/channel?ChannelType=Whatsapp'))
   return rows
@@ -395,5 +391,126 @@ export async function listChannels(token: string): Promise<HelenaChannel[]> {
     .filter(c => c.id)
 }
 
-// Exporta o fetch para os módulos de feature (contato, etiquetas, templates).
+// ─── CRM Types (TASK-010) ─────────────────────────────────────────────────────
+
+export interface PaginatedResponse<T> {
+  items:        T[]
+  totalItems:   number
+  totalPages:   number
+  hasMorePages: boolean
+  pageNumber:   number
+  pageSize:     number
+}
+
+export interface Panel {
+  id:               string
+  title:            string
+  description:      string | null
+  key:              string
+  archived:         boolean
+  scope:            'COMPANY' | 'USER'
+  type:             'MANAGEMENT' | string
+  overdueCardCount: number
+  createdAt:        string
+  updatedAt:        string
+}
+
+export interface PanelCard {
+  id:          string
+  title:       string
+  description: string | null
+  stepId:      string | null
+  stepTitle:   string | null
+  panelId:     string
+  tagIds:      string[] | null
+  contactId:   string | null
+  createdAt:   string
+  updatedAt:   string
+}
+
+export interface CardNote {
+  id:        string
+  cardId:    string
+  panelId:   string
+  userId:    string
+  text:      string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MoveCardInput {
+  stepId?:      string
+  /** Sempre enviar a description atual completa — Helena substitui com vazio se omitida. */
+  description?: string
+  /** Helena faz MERGE de tags — nunca substitui. Passe só os IDs a adicionar. */
+  tagIds?:      string[]
+}
+
+// ─── CRM / Panel API (TASK-010) ───────────────────────────────────────────────
+
+export function listPanels(token: string): Promise<PaginatedResponse<Panel>> {
+  return helenaFetch(token, '/crm/v2/panel')
+}
+
+export function getPanel(id: string, token: string): Promise<Panel> {
+  return helenaFetch(token, `/crm/v1/panel/${id}`)
+}
+
+export function listPanelCards(
+  panelId: string,
+  token: string,
+  page = 1,
+  pageSize = 100,
+): Promise<PaginatedResponse<PanelCard>> {
+  return helenaFetch(token, `/crm/v1/panel/card?PanelId=${panelId}&Page=${page}&PageSize=${pageSize}`)
+}
+
+export async function getCardByContact(
+  panelId: string,
+  contactId: string,
+  token: string,
+): Promise<PanelCard | null> {
+  const data: PaginatedResponse<PanelCard> = await helenaFetch(
+    token,
+    `/crm/v1/panel/card?PanelId=${panelId}&ContactId=${contactId}&PageSize=1`,
+  )
+  return data.items[0] ?? null
+}
+
+// fields[] indica à Helena quais campos atualizar — apenas os que foram passados.
+// PUT /crm/v2/panel/card/{id} retorna o card completo atualizado.
+export function moveCard(
+  cardId: string,
+  updates: MoveCardInput,
+  token: string,
+): Promise<PanelCard> {
+  const fields: string[] = []
+  if (updates.stepId !== undefined)      fields.push('StepId')
+  if (updates.description !== undefined) fields.push('Description')
+  if (updates.tagIds !== undefined)      fields.push('TagIds')
+
+  return helenaFetch(token, `/crm/v2/panel/card/${cardId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ fields, ...updates }),
+  })
+}
+
+export function getCardNotes(
+  cardId: string,
+  token: string,
+): Promise<PaginatedResponse<CardNote>> {
+  return helenaFetch(token, `/crm/v1/panel/card/${cardId}/note`)
+}
+
+export function createCardNote(
+  cardId: string,
+  text: string,
+  token: string,
+): Promise<CardNote> {
+  return helenaFetch(token, `/crm/v1/panel/card/${cardId}/note`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  })
+}
+
 export { helenaFetch }
