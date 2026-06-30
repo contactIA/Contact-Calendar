@@ -65,8 +65,8 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
       {/* Agendar */}
       <button
         onClick={onNewAppointment}
-        className="flex items-center gap-1.5 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg,#a855f7,#d946ef)', boxShadow: '0 2px 8px rgba(168,85,247,.3)' }}
+        className="bg-brand flex items-center gap-1.5 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex-shrink-0"
+        style={{ boxShadow: '0 2px 8px rgba(147,51,234,.3)' }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>

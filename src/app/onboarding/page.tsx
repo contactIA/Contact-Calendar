@@ -199,7 +199,7 @@ export default function OnboardingPage() {
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
               <button onClick={createAccount} disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+                className="w-full py-3 rounded-xl text-sm font-semibold bg-brand text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
                 {loading ? 'Criando conta...' : 'Criar conta e continuar'}
               </button>
             </div>
