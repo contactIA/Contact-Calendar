@@ -128,6 +128,16 @@ export interface MoveCardInput {
   tagIds?: string[]
 }
 
+// GET /v1/tag — endpoint retorna 400 com token CRM/integração padrão.
+// A Helena exige parâmetros ou escopo de token não documentado.
+// Os UUIDs conhecidos podem ser obtidos via tagIds dos cards (listPanelCards).
+export interface Tag {
+  id: string
+  name: string
+  color: string | null
+  createdAt: string
+}
+
 // ─── CRM / Panel API ──────────────────────────────────────────────────────────
 
 export function listPanels(token: string): Promise<PaginatedResponse<Panel>> {
@@ -165,11 +175,12 @@ export async function getCardByContact(
 }
 
 // fields array tells Helena which properties to update — only include what changed
+// Returns the updated card (PUT /crm/v2/panel/card/{id} responds with full card)
 export function moveCard(
   cardId: string,
   updates: MoveCardInput,
   token: string
-): Promise<void> {
+): Promise<PanelCard> {
   const fields: string[] = []
   if (updates.stepId !== undefined) fields.push('StepId')
   if (updates.description !== undefined) fields.push('Description')
@@ -183,6 +194,15 @@ export function moveCard(
     },
     token
   )
+}
+
+// GET /v1/tag — retorna 400 "badrequest" com os tokens CRM e integração atuais.
+// O endpoint existe mas requer parâmetros ou escopo de token não documentado pela Helena.
+// Workaround: colher tagIds dos cards via listPanelCards e manter mapeamento manual (TASK-012).
+// Quando a Helena liberar o escopo correto, substituir a implementação abaixo.
+export async function listTags(token: string): Promise<Tag[]> {
+  const data: PaginatedResponse<Tag> = await helenaFetch('/v1/tag?PageSize=200', {}, token)
+  return data.items
 }
 
 export function getCardNotes(
