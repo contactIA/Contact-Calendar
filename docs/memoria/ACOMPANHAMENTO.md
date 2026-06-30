@@ -1,5 +1,5 @@
 # Acompanhamento — Plataforma Contact (Escala Agenda 2.0)
-> Última atualização: 28/06/2026 · André Pujol (Team Leader)
+> Última atualização: 30/06/2026 · André Pujol (Team Leader)
 
 ---
 
@@ -8,7 +8,7 @@
 | Entrega | Data | Por quem |
 |---------|------|---------|
 | **TASK-010** — `helena.ts` estendido com funções CRM completas: `listPanels`, `getPanel`, `listPanelCards`, `getCardByContact`, `moveCard` (PUT retorna card completo, testado A→B→A), `getCardNotes`, `createCardNote`, `listTags` (/core/v1/tag). `helenaFetch` refatorado para token-first com backoff 429. Tipos exportados: `PaginatedResponse<T>`, `Panel`, `PanelCard`, `CardNote`, `MoveCardInput`. `AccountIntegration` multi-conta com colunas planas. Dev route `/api/dev/helena-check` validada ao vivo (12 painéis, 22 cards, notas). Migration 0007 (`panel_id`). Merge com 5 commits do remoto resolvido. Push: commits 91f1535, 0a11937, 6d148ac, 9f5cb5b, 20253a4. Revisão: **APROVADO**. | 30/06/2026 | André |
-| **TASK-011** — Aba "Integrações Helena" totalmente dinâmica na tela de Configurações. Routes `/api/admin/integrations/{channels,tags,templates}`. Entregue pelo remoto (Gabriel). | 29/06/2026 | Gabriel |
+| **TASK-011** — Aba "Integração Helena" completa: endpoints `/api/admin/integrations/helena/panels` e `/helena/steps?panelId`, componente `HelenaIntegrationTab.tsx` com token, canal, sync, 3 etiquetas, 2 templates, select de painel Helena e tabela de mapeamento das 9 etapas do funil → StepId. Migration 0008 (`step_mappings JSONB`) aplicada no Supabase. Zod corrigido para `z.record(z.string(), z.string())`. Push: commit `01f87ac`. Revisão: **APROVADO**. | 30/06/2026 | André |
 | **TASK-002** — Tabela `account_integrations` criada (migration 0005 schema plano, RLS deny-all), helper `integrations.ts` + AES-256-GCM preservado, seed do token Helena. Decisão PEND-2: criptografia no app layer (Node crypto built-in). Migrations 0006 (reminder_message_id) e 0007 (panel_id) aplicadas no Supabase. | 28/06/2026 | André |
 | **TASK-001** — Token Helena rotacionado, novo token em `.env` + Vercel, antigo retorna 401 | 18/06/2026 | André |
 | **TASK-040** — Tokens de marca declarados no `@theme inline` (globals.css), utilities `bg-brand`/`text-brand`/`ring-brand-border`/`bg-brand-light` via `@utility`, cores semânticas `--color-success`/`--color-danger` com valores exatos da spec. Aplicado em botões reais. | 23/06/2026 | Daniel |
@@ -32,7 +32,7 @@
 | Task | Dev | Desde | Situação |
 |------|-----|-------|----------|
 | **TASK-032** — Renderizar bloqueios/expediente no grid | Daniel | 17/06/2026 | Status a confirmar com Daniel. |
-| **TASK-014** — Panel Mirror: carga inicial paginada (GATE R0) | André | — | Desbloqueada após TASK-010+011. Próxima na fila. |
+| **TASK-014** — Panel Mirror: carga inicial paginada (GATE R0) | André | — | Desbloqueada após TASK-010+011 ✅. **Próxima na fila.** |
 
 ---
 
@@ -50,10 +50,8 @@
 
 | # | Task | Depende de | Prazo |
 |---|------|-----------|-------|
-| **→ PRÓXIMA** | **TASK-010** — Estender `helena.ts` (painel/card/tag) | TASK-002 ✅ | 25/06 |
-| 3 | **TASK-011** — Endpoint + aba "Integração Helena" (salvar token, painel, etapas) | TASK-010 | 30/06 |
-| 4 | **TASK-012** ⚠️ humano — Cadastrar tags manualmente na Helena (unidade, CRC, canal) + listar UUIDs | TASK-001 | 17/06 ⚠️ atrasado |
-| 5 | **TASK-014** — Panel Mirror: carga inicial paginada (GATE R0) | TASK-010+003+011 | 06/07 |
+| **→ PRÓXIMA** | **TASK-014** — Panel Mirror: carga inicial paginada (GATE R0) | TASK-010 ✅ + TASK-011 ✅ | 06/07 |
+| — | **TASK-012** ⚠️ humano — Cadastrar tags manualmente na Helena (unidade, CRC, canal) + listar UUIDs | TASK-001 | 17/06 ⚠️ atrasado |
 
 > **Nota TASK-012:** é tarefa HUMANA (entrar no painel da Helena e criar as tags manualmente). Não precisa de código. Listar UUIDs via `GET /v1/tag` e documentar para a TASK-013.
 
@@ -89,6 +87,7 @@
 
 ## 🗓️ Minhas Anotações de Líder
 
+- **30/06/2026:** TASK-011 ✅ CONCLUÍDA — `HelenaIntegrationTab.tsx` com painel CRM + tabela de mapeamento das 9 etapas. Endpoints `/helena/panels` e `/helena/steps`. Migration 0008 aplicada no Supabase. Push `01f87ac`. Próxima: TASK-014.
 - **30/06/2026:** TASK-010 ✅ APROVADA pelo revisor. `helena.ts` refatorado para arquitetura multi-conta token-first. Funções CRM completas validadas ao vivo (12 painéis, 22 cards, notas reais). Merge com 5 commits do remoto concluído. TASK-011 também ✅ (estava no remoto, entregue pelo Gabriel). Próxima: TASK-014 (Panel Mirror). ⚠️ TASK-012 ainda atrasada — cadastrar tags manualmente na Helena (ação humana).
 - **30/06/2026:** Schema `account_integrations` migrado para colunas planas (migration 0005 do remoto). Migrations 0006 e 0007 aplicadas no Supabase. Dev route `/api/dev/helena-check?secret=helena123` funcionando e validada.
 - **28/06/2026:** TASK-002 ✅ concluída — tabela `account_integrations`, helper `integrations.ts`, seed executado. Token Helena cifrado no banco. Decisão PEND-2 registrada (app layer AES-256-GCM). Push em `contactIA/Contact-Calendar` commit `c25e527`.
