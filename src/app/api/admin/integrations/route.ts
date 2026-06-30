@@ -11,7 +11,8 @@ const db = supabaseAdmin as any
 const PUBLIC_FIELDS = `
   account_id, helena_enabled, helena_channel,
   confirm_template_id, reminder_template_id, reminder_lead_hours,
-  sync_contacts, tag_scheduled, tag_completed, tag_no_show, updated_at
+  sync_contacts, tag_scheduled, tag_completed, tag_no_show,
+  panel_id, step_mappings, updated_at
 `
 
 const updateSchema = z.object({
@@ -25,6 +26,8 @@ const updateSchema = z.object({
   tag_scheduled:        z.string().min(1).nullable().optional(),
   tag_completed:        z.string().min(1).nullable().optional(),
   tag_no_show:          z.string().min(1).nullable().optional(),
+  panel_id:             z.string().uuid().nullable().optional(),
+  step_mappings:        z.record(z.string(), z.string()).optional(),
 })
 
 // GET /api/admin/integrations — config da integração Helena da conta (sem o token)
@@ -51,6 +54,8 @@ export const GET = withAuth(async (_req, ctx) => {
       tag_completed: null,
       tag_no_show: null,
       helena_token_set: false,
+      panel_id: null,
+      step_mappings: {},
     })
   }
 
