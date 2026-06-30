@@ -32,7 +32,6 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-<<<<<<< HEAD
   /* Marca — sólido: gera bg-brand-solid, text-brand-solid, ring-brand-solid… */
   --color-brand-solid:  var(--brand-solid);
   /* Marca — claro: gera bg-brand-light, text-brand-light… */
@@ -56,13 +55,6 @@
 
 @utility text-brand {
   color: var(--brand-text);
-=======
-  /* Tokens de marca (TASK-040): cor sólida da marca + variante p/ anel de foco.
-     Mapeiam para o gradiente primário existente — geram bg-brand, text-brand,
-     ring-brand, ring-brand-border, etc. */
-  --color-brand:        var(--primary-from);
-  --color-brand-border: var(--primary-mid);
->>>>>>> 06749a0147f7328c064ac6538e6f78c584076b4d
 }
 
 body {
