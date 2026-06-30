@@ -24,6 +24,12 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Tokens de marca (TASK-040): cor sólida da marca + variante p/ anel de foco.
+     Mapeiam para o gradiente primário existente — geram bg-brand, text-brand,
+     ring-brand, ring-brand-border, etc. */
+  --color-brand:        var(--primary-from);
+  --color-brand-border: var(--primary-mid);
 }
 
 body {
@@ -32,6 +38,9 @@ body {
   font-family: 'Inter', var(--font-geist-sans), -apple-system, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 .agenda-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .agenda-scroll::-webkit-scrollbar-track { background: #f1f5f9; }

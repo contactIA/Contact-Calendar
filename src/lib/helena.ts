@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 const BASE_URL = process.env.HELENA_BASE_URL ?? 'https://api.wts.chat'
 const FLUXODONTO_URL = process.env.FLUXODONTO_URL ?? 'https://app.fluxodonto.com'
 
-// Config de integração Helena por conta (white-label: uma Helena por clínica).
+// Config de integração Helena de UMA conta (white-label: uma Helena por clínica).
 export type AccountIntegration = {
   account_id:           string
   helena_enabled:       boolean
@@ -19,7 +19,11 @@ export type AccountIntegration = {
   panel_id:             string | null
 }
 
+// Carrega a config da conta. Retorna null quando a integração não está
+// habilitada ou não há token — assim os chamadores tratam Helena como
+// best-effort e simplesmente não fazem nada quando a conta não configurou.
 export async function getAccountIntegration(accountId: string): Promise<AccountIntegration | null> {
+  // account_integrations ainda não está nos tipos gerados (migration 0005).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (supabaseAdmin as any)
     .from('account_integrations')
@@ -41,7 +45,8 @@ export async function getHelenaTokenForAccount(accountId: string): Promise<strin
   return data?.helena_token ?? null
 }
 
-// Backoff em 429: respeita Retry-After; senão backoff incremental. Até 3 tentativas.
+// Backoff em 429: a Helena limita por conta (1000/5min + 200/5s burst). Respeita
+// o header Retry-After quando presente; senão espera incremental. Até 3 tentativas.
 async function helenaFetch(token: string, path: string, options: RequestInit = {}) {
   const maxRetries = 3
   for (let attempt = 0; ; attempt++) {
@@ -68,6 +73,7 @@ async function helenaFetch(token: string, path: string, options: RequestInit = {
       throw new Error(`Helena API error ${res.status}: ${text}`)
     }
 
+    // Alguns endpoints respondem corpo vazio.
     const text = await res.text()
     return text ? JSON.parse(text) : null
   }
@@ -75,6 +81,7 @@ async function helenaFetch(token: string, path: string, options: RequestInit = {
 
 // ─── Chat / Contact API ───────────────────────────────────────────────────────
 
+// Busca contato pelo telefone — retorna o id do contato ou null
 export async function getContactByPhone(token: string, phone: string): Promise<string | null> {
   try {
     const clean = phone.replace(/\D/g, '')
@@ -85,11 +92,12 @@ export async function getContactByPhone(token: string, phone: string): Promise<s
   }
 }
 
+// Busca a sessão ativa mais recente de um contato — retorna o session id ou null
 export async function getActiveSessionByContactId(token: string, contactId: string): Promise<string | null> {
   try {
     const data = await helenaFetch(
       token,
-      `/chat/v2/session?ContactId=${contactId}&Status=OPEN&PageSize=1&OrderBy=LastInteractionAt&OrderDirection=DESCENDING`,
+      `/chat/v2/session?ContactId=${contactId}&Status=OPEN&PageSize=1&OrderBy=LastInteractionAt&OrderDirection=DESCENDING`
     )
     return data?.items?.[0]?.id ?? null
   } catch {
@@ -129,12 +137,17 @@ export function completeSession(token: string, sessionId: string, reactivateOnNe
   })
 }
 
+// Cria ou atualiza um contato pelo telefone (upsert determinístico: consulta
+// se já existe → PUT por telefone; senão → POST cria).
 export async function upsertContact(
   token: string,
   contact: { phone: string; name?: string | null; email?: string | null },
 ) {
   const clean = contact.phone.replace(/\D/g, '')
-  const body = { name: contact.name ?? undefined, email: contact.email ?? undefined }
+  const body = {
+    name:  contact.name ?? undefined,
+    email: contact.email ?? undefined,
+  }
   const existing = await getContactByPhone(token, clean)
   if (existing) {
     return helenaFetch(token, `/core/v1/contact/phonenumber/${clean}`, {
@@ -148,6 +161,8 @@ export async function upsertContact(
   })
 }
 
+// Best-effort: sincroniza o paciente como contato na Helena. NUNCA lança — uma
+// falha de integração não pode quebrar o cadastro/edição do paciente.
 export async function syncPatientContact(
   accountId: string,
   patient: { phone?: string | null; name?: string | null; email?: string | null },

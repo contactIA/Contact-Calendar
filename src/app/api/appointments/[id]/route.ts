@@ -1,5 +1,6 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { rescheduleReminder } from '@/lib/helena'
 import { z } from 'zod'
 
 const rescheduleSchema = z.object({
@@ -21,9 +22,10 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   const { start_at, duration_minutes, dentist_id, chair_id } = parsed.data
   const end_at = new Date(new Date(start_at).getTime() + duration_minutes * 60_000).toISOString()
 
-  const { data: existing } = await supabaseAdmin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: existing } = await (supabaseAdmin as any)
     .from('appointments')
-    .select('id, status, dentist_id, chair_id')
+    .select('id, status, dentist_id, chair_id, reminder_message_id')
     .eq('id', id)
     .eq('account_id', ctx.user.accountId)
     .single()
@@ -64,5 +66,26 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: move o lembrete da Helena para o novo horário.
+  const { data: info } = await supabaseAdmin
+    .from('appointments')
+    .select('start_at, patient:patients(name, phone), dentist:dentists(user:users(name)), procedure:procedures(name)')
+    .eq('id', id)
+    .single()
+
+  if (info) {
+    const patient = info.patient as { name: string | null; phone: string | null } | null
+    const newReminderId = await rescheduleReminder(ctx.user.accountId, existing.reminder_message_id, {
+      phone:         patient?.phone,
+      startAtISO:    info.start_at,
+      patientName:   patient?.name,
+      dentistName:   (info.dentist as { user: { name: string } | null } | null)?.user?.name,
+      procedureName: (info.procedure as { name: string } | null)?.name,
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: newReminderId }).eq('id', id)
+  }
+
   return ok(data)
 }, ['admin', 'receptionist'])
