@@ -3,10 +3,12 @@ import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod'
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
 const querySchema = z.object({
-  dentist_id:        z.string().uuid(),
-  unit_id:           z.string().uuid(),
-  procedure_id:      z.string().uuid(),
+  dentist_id:        z.string().regex(UUID_RE, 'Invalid UUID'),
+  unit_id:           z.string().regex(UUID_RE, 'Invalid UUID'),
+  procedure_id:      z.string().regex(UUID_RE, 'Invalid UUID'),
   date:              z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   duration_override: z.coerce.number().int().positive().optional(),
 })
