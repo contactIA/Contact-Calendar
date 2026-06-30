@@ -5,6 +5,7 @@ import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format, addMinutes, parse } from 'date-fns'
 import { api } from '@/lib/client'
 import { type Dentist } from '@/hooks/useDentists'
+import { TimeWheel } from './TimeWheel'
 
 type Patient   = { id: string; name: string; phone: string | null }
 type Procedure = { id: string; name: string; duration_minutes: number; color: string }
@@ -324,17 +325,11 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
               </Field>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Início">
-                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                </Field>
-                <Field label="Duração (min)">
-                  <input type="number" min={5} step={5} value={durationMin}
-                    onChange={e => setDurationMin(Math.max(5, Number(e.target.value)))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                </Field>
-              </div>
+              <Field label="Início">
+                <div className="border border-gray-200 rounded-lg py-2">
+                  <TimeWheel value={startTime} onChange={setStartTime} />
+                </div>
+              </Field>
 
               {/* Resumo visual */}
               <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">

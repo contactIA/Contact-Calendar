@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { tagContactByStatus, cancelReminder } from '@/lib/helena'
 import { z } from 'zod'
 
 const bodySchema = z.object({
@@ -30,9 +30,10 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   }
 
   // Garante que o appointment pertence à conta
-  const { data: existing } = await supabaseAdmin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: existing } = await (supabaseAdmin as any)
     .from('appointments')
-    .select('id, status')
+    .select('id, status, reminder_message_id, patient:patients(phone)')
     .eq('id', id)
     .eq('account_id', ctx.user.accountId)
     .single()
@@ -56,6 +57,15 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: etiqueta o contato conforme o novo status (não bloqueia).
+  const patient = existing.patient as { phone: string | null } | null
+  await tagContactByStatus(ctx.user.accountId, patient?.phone, status)
+
+  // Consulta cancelada não deve disparar lembrete — cancela o agendado na Helena.
+  if (status === 'cancelled') {
+    await cancelReminder(ctx.user.accountId, existing.reminder_message_id)
+  }
 
   return ok(data)
 })

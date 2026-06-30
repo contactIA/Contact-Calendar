@@ -1,6 +1,7 @@
 import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { cancelReminder } from '@/lib/helena'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -42,10 +43,11 @@ export const POST = withAgentAuth(async (req, { user }) => {
   }
 
   // Verifica que o agendamento pertence ao paciente e à conta
-  const { data: appt, error: fetchErr } = await supabaseAdmin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: appt, error: fetchErr } = await (supabaseAdmin as any)
     .from('appointments')
     .select(`
-      id, start_at, status,
+      id, start_at, status, reminder_message_id,
       dentist:dentists(user:users(name)),
       procedure:procedures(name)
     `)
@@ -63,6 +65,9 @@ export const POST = withAgentAuth(async (req, { user }) => {
     .eq('id', appointmentId)
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: cancela o lembrete agendado na Helena.
+  await cancelReminder(user.accountId, appt.reminder_message_id)
 
   const dentistName  = (appt.dentist as { user: { name: string } | null } | null)?.user?.name ?? 'Dentista'
   const procedimento = (appt.procedure as { name: string } | null)?.name ?? ''

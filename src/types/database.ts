@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_integrations: {
+        Row: {
+          id: string
+          account_id: string
+          provider: string
+          secrets: Json
+          panel_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          account_id: string
+          provider: string
+          secrets: Json
+          panel_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string
+          provider?: string
+          secrets?: Json
+          panel_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_integrations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       accounts: {
         Row: {
           created_at: string

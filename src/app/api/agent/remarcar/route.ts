@@ -1,6 +1,7 @@
 import { withAgentAuth, findPatientByPhone } from '@/lib/agentAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { err, ok } from '@/lib/api'
+import { rescheduleReminder } from '@/lib/helena'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -26,9 +27,10 @@ export const POST = withAgentAuth(async (req, { user }) => {
   const patientId = match.id
 
   // Busca o agendamento a remarcar
-  let query = supabaseAdmin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabaseAdmin as any)
     .from('appointments')
-    .select('id, start_at, end_at, duration_minutes, dentist_id, chair_id, unit_id, status')
+    .select('id, start_at, end_at, duration_minutes, dentist_id, chair_id, unit_id, status, reminder_message_id')
     .eq('account_id', user.accountId)
     .eq('patient_id', patientId)
     .in('status', ['scheduled', 'confirmed'])
@@ -106,6 +108,7 @@ export const POST = withAgentAuth(async (req, { user }) => {
     .eq('id', appt.id)
     .select(`
       id, start_at,
+      patient:patients(name, phone),
       dentist:dentists(user:users(name)),
       procedure:procedures(name)
     `)
@@ -116,6 +119,18 @@ export const POST = withAgentAuth(async (req, { user }) => {
     if (error.code === '23P01') return err('Conflito: horário acabou de ser ocupado', 409)
     return err(error.message, 500)
   }
+
+  // Best-effort: move o lembrete da Helena para o novo horário.
+  const patientInfo = updated.patient as { name: string | null; phone: string | null } | null
+  const newReminderId = await rescheduleReminder(user.accountId, appt.reminder_message_id, {
+    phone:         patientInfo?.phone,
+    startAtISO:    updated.start_at,
+    patientName:   patientInfo?.name,
+    dentistName:   (updated.dentist as { user: { name: string } | null } | null)?.user?.name,
+    procedureName: (updated.procedure as { name: string } | null)?.name,
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: newReminderId }).eq('id', appt.id)
 
   const dentistName  = (updated.dentist as { user: { name: string } | null } | null)?.user?.name ?? 'Dentista'
   const procedimento = (updated.procedure as { name: string } | null)?.name ?? ''

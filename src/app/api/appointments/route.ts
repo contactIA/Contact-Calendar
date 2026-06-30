@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { notifyAppointmentBooked } from '@/lib/helena'
 import { z } from 'zod'
 
 const createSchema = z.object({
@@ -21,9 +21,19 @@ const listSchema = z.object({
   date_from:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status:     z.string().optional(),
+  q:          z.string().optional(),
   page:       z.coerce.number().int().positive().default(1),
   page_size:  z.coerce.number().int().min(1).max(500).default(50),
 })
+
+const APPOINTMENT_SELECT = `
+  id, start_at, end_at, duration_minutes, status, notes, created_by_role, created_at,
+  patient:patients(id, name, phone),
+  dentist:dentists(id, color, user:users(name)),
+  procedure:procedures(id, name, color, duration_minutes),
+  chair:chairs(id, name),
+  unit:units(id, name)
+`
 
 // GET /api/appointments — lista consultas da conta
 export const GET = withAuth(async (req, ctx) => {
@@ -31,19 +41,59 @@ export const GET = withAuth(async (req, ctx) => {
   const parsed = listSchema.safeParse(params)
   if (!parsed.success) return err(parsed.error.issues[0].message, 400)
 
-  const { unit_id, dentist_id, patient_id, date, date_from, date_to, status, page, page_size } = parsed.data
+  const { unit_id, dentist_id, patient_id, date, date_from, date_to, status, q, page, page_size } = parsed.data
   const from = (page - 1) * page_size
+
+  // Busca textual global accent-insensitive: o RPC search_appointment_ids casa
+  // o termo por nome de paciente/procedimento/dentista (via unaccent, igual a
+  // search_patients) e devolve os ids. A rota então re-seleciona com o shape
+  // aninhado de sempre e mantém os filtros de status e de papel.
+  const term = q?.trim()
+  if (term && term.length >= 2) {
+    const acct = ctx.user.accountId
+
+    // search_appointment_ids ainda não está nos tipos gerados (migration 0004).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: matched, error: matchErr } = await (supabaseAdmin as any).rpc('search_appointment_ids', {
+      p_account_id: acct,
+      p_term:       term,
+    })
+    if (matchErr) return err(matchErr.message, 500)
+
+    const ids: string[] = (matched ?? []).map((r: { id: string }) => r.id)
+    // Nada casou → resultado vazio, sem rodar a query principal.
+    if (ids.length === 0) {
+      return ok({ data: [], total: 0, page, page_size })
+    }
+
+    let searchQuery = supabaseAdmin
+      .from('appointments')
+      .select(APPOINTMENT_SELECT, { count: 'exact' })
+      .eq('account_id', acct)
+      .in('id', ids)
+      .order('start_at', { ascending: true })
+      .range(from, from + page_size - 1)
+
+    if (status && status !== 'all') {
+      searchQuery = searchQuery.eq('status', status as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show')
+    } else if (!status) {
+      searchQuery = searchQuery.not('status', 'in', '("cancelled","no_show")')
+    }
+
+    if (ctx.user.role === 'dentist') {
+      const { data: dentist } = await supabaseAdmin
+        .from('dentists').select('id').eq('user_id', ctx.user.sub).single()
+      if (dentist) searchQuery = searchQuery.eq('dentist_id', dentist.id)
+    }
+
+    const { data, error, count } = await searchQuery
+    if (error) return err(error.message, 500)
+    return ok({ data, total: count ?? 0, page, page_size })
+  }
 
   let query = supabaseAdmin
     .from('appointments')
-    .select(`
-      id, start_at, end_at, duration_minutes, status, notes, created_by_role, created_at,
-      patient:patients(id, name, phone),
-      dentist:dentists(id, color, user:users(name)),
-      procedure:procedures(id, name, color, duration_minutes),
-      chair:chairs(id, name),
-      unit:units(id, name)
-    `, { count: 'exact' })
+    .select(APPOINTMENT_SELECT, { count: 'exact' })
     .eq('account_id', ctx.user.accountId)
     .order('start_at', { ascending: true })
     .range(from, from + page_size - 1)
@@ -121,6 +171,28 @@ export const POST = withAuth(async (req, ctx) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: confirmação imediata + lembrete agendado na Helena.
+  const { data: info } = await supabaseAdmin
+    .from('appointments')
+    .select('patient:patients(name, phone), dentist:dentists(user:users(name)), procedure:procedures(name)')
+    .eq('id', data.id)
+    .single()
+
+  if (info) {
+    const patient = info.patient as { name: string | null; phone: string | null } | null
+    const reminderId = await notifyAppointmentBooked(ctx.user.accountId, {
+      phone:         patient?.phone,
+      startAtISO:    data.start_at,
+      patientName:   patient?.name,
+      dentistName:   (info.dentist as { user: { name: string } | null } | null)?.user?.name,
+      procedureName: (info.procedure as { name: string } | null)?.name,
+    })
+    if (reminderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: reminderId }).eq('id', data.id)
+    }
+  }
 
   return ok(data, 201)
 }, ['admin', 'receptionist', 'ai_agent'])

@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { syncPatientContact } from '@/lib/helena'
 import { z } from 'zod'
 
 const createSchema = z.object({
@@ -57,6 +57,9 @@ export const POST = withAuth(async (req, ctx) => {
     .single()
 
   if (error) return err(error.message, 500)
+
+  // Best-effort: espelha o paciente como contato na Helena (não bloqueia o cadastro).
+  await syncPatientContact(ctx.user.accountId, data)
 
   return ok(data, 201)
 }, ['admin', 'receptionist', 'ai_agent'])

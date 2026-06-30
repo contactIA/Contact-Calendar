@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
+import { api } from '@/lib/client'
 import { AgendaHeader } from './AgendaHeader'
 import { AgendaSidebar } from './AgendaSidebar'
 import { KPIStrip } from './KPIStrip'
@@ -89,20 +90,25 @@ export function AgendaShell() {
   // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
   const isLoading = loading || loadingDentists
 
-  // For week view, appointments already filtered server-side; just alias
-  const weekAppointments = appointments
-
-  // Apply search filter (accent-insensitive)
-  const filteredAppointments = useMemo(() => {
-    if (!search.trim()) return appointments
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const q = norm(search)
-    return appointments.filter(a =>
-      norm(a.patient?.name ?? '').includes(q) ||
-      norm(a.procedure?.name ?? '').includes(q) ||
-      norm(a.dentist?.user?.name ?? '').includes(q)
-    )
-  }, [appointments, search])
+  // Busca GLOBAL (todos os dias): consulta o backend de forma debounced a partir
+  // de 2 caracteres. Desacoplada da grade — a grade segue mostrando o dia inteiro.
+  const [searchResults, setSearchResults] = useState<Appointment[]>([])
+  useEffect(() => {
+    const q = search.trim()
+    let cancelled = false
+    // O clear/fetch roda dentro do timeout (assíncrono) — nunca setState síncrono
+    // no corpo do effect. Com q < 2 caracteres limpamos imediatamente (delay 0).
+    const t = setTimeout(async () => {
+      if (q.length < 2) { if (!cancelled) setSearchResults([]); return }
+      try {
+        const res = await api.get<{ data: Appointment[] }>(`/api/appointments?q=${encodeURIComponent(q)}&page_size=30`)
+        if (!cancelled) setSearchResults(res.data ?? [])
+      } catch {
+        if (!cancelled) setSearchResults([])
+      }
+    }, q.length < 2 ? 0 : 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [search])
 
   const handleAppointmentClick = useCallback((appt: Appointment, el: HTMLElement | null) => {
     setPopover({ appt, el })
@@ -156,7 +162,7 @@ export function AgendaShell() {
           onViewChange={v => { setView(v); setListPage(1) }}
           onNewAppointment={() => { setModalInitial({}); setModalOpen(true) }}
           onSearch={setSearch}
-          searchResults={filteredAppointments}
+          searchResults={searchResults}
           onAppointmentSelect={handleAppointmentSelect}
         />
 
@@ -174,7 +180,7 @@ export function AgendaShell() {
         {view === 'day' && (
           <div className="flex-1 overflow-x-auto">
             <DailyView
-              appointments={filteredAppointments}
+              appointments={appointments}
               dentists={dentists}
               selectedDentistId={selectedDentistId}
               date={dateStr}
@@ -187,7 +193,7 @@ export function AgendaShell() {
 
         {view === 'week' && (
           <WeeklyView
-            appointments={filteredAppointments}
+            appointments={appointments}
             date={dateStr}
             onAppointmentClick={handleAppointmentClick}
             onDayClick={handleDayClick}
