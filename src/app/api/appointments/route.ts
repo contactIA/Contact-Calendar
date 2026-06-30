@@ -149,7 +149,8 @@ export const POST = withAuth(async (req, ctx) => {
   })
 
   if (conflicts && conflicts.length > 0) {
-    return err('Scheduling conflict: ' + conflicts[0].conflict_type + ' is not available', 409)
+    const tipo = conflicts[0].conflict_type === 'dentist' ? 'profissional' : conflicts[0].conflict_type === 'chair' ? 'cadeira' : 'recurso'
+    return err(`Horário indisponível: ${tipo} já tem agendamento nesse horário`, 409)
   }
 
   const { data, error } = await supabaseAdmin
