@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_integrations: {
+        Row: {
+          account_id: string
+          confirm_template_id: string | null
+          created_at: string
+          helena_channel: string | null
+          helena_enabled: boolean
+          helena_token: string | null
+          panel_id: string | null
+          reminder_lead_hours: number
+          reminder_template_id: string | null
+          step_mappings: Json
+          sync_contacts: boolean
+          tag_completed: string | null
+          tag_no_show: string | null
+          tag_scheduled: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          confirm_template_id?: string | null
+          created_at?: string
+          helena_channel?: string | null
+          helena_enabled?: boolean
+          helena_token?: string | null
+          panel_id?: string | null
+          reminder_lead_hours?: number
+          reminder_template_id?: string | null
+          step_mappings?: Json
+          sync_contacts?: boolean
+          tag_completed?: string | null
+          tag_no_show?: string | null
+          tag_scheduled?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          confirm_template_id?: string | null
+          created_at?: string
+          helena_channel?: string | null
+          helena_enabled?: boolean
+          helena_token?: string | null
+          panel_id?: string | null
+          reminder_lead_hours?: number
+          reminder_template_id?: string | null
+          step_mappings?: Json
+          sync_contacts?: boolean
+          tag_completed?: string | null
+          tag_no_show?: string | null
+          tag_scheduled?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_integrations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts: {
         Row: {
           created_at: string
@@ -97,6 +159,7 @@ export type Database = {
           notes: string | null
           patient_id: string
           procedure_id: string
+          reminder_message_id: string | null
           start_at: string
           status: Database["public"]["Enums"]["appointment_status"]
           unit_id: string
@@ -115,6 +178,7 @@ export type Database = {
           notes?: string | null
           patient_id: string
           procedure_id: string
+          reminder_message_id?: string | null
           start_at: string
           status?: Database["public"]["Enums"]["appointment_status"]
           unit_id: string
@@ -133,6 +197,7 @@ export type Database = {
           notes?: string | null
           patient_id?: string
           procedure_id?: string
+          reminder_message_id?: string | null
           start_at?: string
           status?: Database["public"]["Enums"]["appointment_status"]
           unit_id?: string
@@ -438,6 +503,159 @@ export type Database = {
           },
         ]
       }
+      helena_cards: {
+        Row: {
+          account_id: string
+          appt_date: string | null
+          appt_time: string | null
+          closed_value: number | null
+          crc_tag: string | null
+          description: string | null
+          helena_card_id: string
+          id: string
+          lead_name: string | null
+          origin_tag: string | null
+          panel_id: string
+          patient_id: string | null
+          status: string | null
+          step_id: string | null
+          tag_ids: string[] | null
+          unit_tag: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          account_id: string
+          appt_date?: string | null
+          appt_time?: string | null
+          closed_value?: number | null
+          crc_tag?: string | null
+          description?: string | null
+          helena_card_id: string
+          id?: string
+          lead_name?: string | null
+          origin_tag?: string | null
+          panel_id: string
+          patient_id?: string | null
+          status?: string | null
+          step_id?: string | null
+          tag_ids?: string[] | null
+          unit_tag?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          appt_date?: string | null
+          appt_time?: string | null
+          closed_value?: number | null
+          crc_tag?: string | null
+          description?: string | null
+          helena_card_id?: string
+          id?: string
+          lead_name?: string | null
+          origin_tag?: string | null
+          panel_id?: string
+          patient_id?: string | null
+          status?: string | null
+          step_id?: string | null
+          tag_ids?: string[] | null
+          unit_tag?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "helena_cards_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "helena_cards_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "helena_panels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "helena_cards_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "helena_cards_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "helena_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      helena_panels: {
+        Row: {
+          account_id: string
+          helena_panel_id: string
+          id: string
+          synced_at: string | null
+          title: string | null
+        }
+        Insert: {
+          account_id: string
+          helena_panel_id: string
+          id?: string
+          synced_at?: string | null
+          title?: string | null
+        }
+        Update: {
+          account_id?: string
+          helena_panel_id?: string
+          id?: string
+          synced_at?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "helena_panels_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      helena_steps: {
+        Row: {
+          helena_step_id: string
+          id: string
+          name: string | null
+          panel_id: string
+          position: number | null
+        }
+        Insert: {
+          helena_step_id: string
+          id?: string
+          name?: string | null
+          panel_id: string
+          position?: number | null
+        }
+        Update: {
+          helena_step_id?: string
+          id?: string
+          name?: string | null
+          panel_id?: string
+          position?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "helena_steps_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "helena_panels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patients: {
         Row: {
           account_id: string
@@ -588,6 +806,42 @@ export type Database = {
           },
         ]
       }
+      step_mappings: {
+        Row: {
+          account_id: string
+          appointment_status: string
+          id: string
+          target_step_id: string | null
+        }
+        Insert: {
+          account_id: string
+          appointment_status: string
+          id?: string
+          target_step_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          appointment_status?: string
+          id?: string
+          target_step_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "step_mappings_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "step_mappings_target_step_id_fkey"
+            columns: ["target_step_id"]
+            isOneToOne: false
+            referencedRelation: "helena_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       units: {
         Row: {
           account_id: string
@@ -693,6 +947,13 @@ export type Database = {
           has_conflict: boolean
         }[]
       }
+      find_patients_by_phone: {
+        Args: { p_account_id: string; p_phone: string }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
       get_available_slots: {
         Args: {
           p_date: string
@@ -707,6 +968,12 @@ export type Database = {
           chair_name: string
           end_at: string
           start_at: string
+        }[]
+      }
+      search_appointment_ids: {
+        Args: { p_account_id: string; p_term: string }
+        Returns: {
+          id: string
         }[]
       }
       search_patients: {
