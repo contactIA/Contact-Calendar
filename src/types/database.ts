@@ -150,12 +150,16 @@ export type Database = {
           cancelled_at: string | null
           cancelled_reason: string | null
           chair_id: string
+          closed_at: string | null
+          closed_value: number | null
+          confirmation_status: string | null
           created_at: string
           created_by_role: Database["public"]["Enums"]["created_by_role"]
           dentist_id: string
           duration_minutes: number
           end_at: string
           id: string
+          last_sync_status: string | null
           notes: string | null
           patient_id: string
           procedure_id: string
@@ -169,12 +173,16 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_reason?: string | null
           chair_id: string
+          closed_at?: string | null
+          closed_value?: number | null
+          confirmation_status?: string | null
           created_at?: string
           created_by_role: Database["public"]["Enums"]["created_by_role"]
           dentist_id: string
           duration_minutes: number
           end_at: string
           id?: string
+          last_sync_status?: string | null
           notes?: string | null
           patient_id: string
           procedure_id: string
@@ -188,12 +196,16 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_reason?: string | null
           chair_id?: string
+          closed_at?: string | null
+          closed_value?: number | null
+          confirmation_status?: string | null
           created_at?: string
           created_by_role?: Database["public"]["Enums"]["created_by_role"]
           dentist_id?: string
           duration_minutes?: number
           end_at?: string
           id?: string
+          last_sync_status?: string | null
           notes?: string | null
           patient_id?: string
           procedure_id?: string
@@ -662,30 +674,39 @@ export type Database = {
           birth_date: string | null
           created_at: string
           email: string | null
+          helena_contact_id: string | null
+          helena_lead_id: string | null
           id: string
           name: string
           notes: string | null
           phone: string | null
+          phone_e164: string | null
         }
         Insert: {
           account_id: string
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          helena_contact_id?: string | null
+          helena_lead_id?: string | null
           id?: string
           name: string
           notes?: string | null
           phone?: string | null
+          phone_e164?: string | null
         }
         Update: {
           account_id?: string
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          helena_contact_id?: string | null
+          helena_lead_id?: string | null
           id?: string
           name?: string
           notes?: string | null
           phone?: string | null
+          phone_e164?: string | null
         }
         Relationships: [
           {
