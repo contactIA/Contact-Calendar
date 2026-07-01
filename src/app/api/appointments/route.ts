@@ -3,20 +3,23 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { notifyAppointmentBooked } from '@/lib/helena'
 import { z } from 'zod'
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+const zUuid = () => z.string().regex(UUID_RE, 'Invalid UUID')
+
 const createSchema = z.object({
-  patient_id:       z.string().uuid(),
-  dentist_id:       z.string().uuid(),
-  unit_id:          z.string().uuid(),
-  chair_id:         z.string().uuid(),
-  procedure_id:     z.string().uuid(),
+  patient_id:       zUuid(),
+  dentist_id:       zUuid(),
+  unit_id:          zUuid(),
+  chair_id:         zUuid(),
+  procedure_id:     zUuid(),
   start_at:         z.string().datetime(),
   duration_minutes: z.number().int().positive(),
 })
 
 const listSchema = z.object({
-  unit_id:    z.string().uuid().optional(),
-  dentist_id: z.string().uuid().optional(),
-  patient_id: z.string().uuid().optional(),
+  unit_id:    zUuid().optional(),
+  dentist_id: zUuid().optional(),
+  patient_id: zUuid().optional(),
   date:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_from:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

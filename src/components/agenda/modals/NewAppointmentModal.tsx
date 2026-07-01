@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
-import { format, addMinutes, parse } from 'date-fns'
+import { format, addMinutes, parse, parseISO } from 'date-fns'
 import { api } from '@/lib/client'
 import { type Dentist } from '@/hooks/useDentists'
-import { TimeWheel } from './TimeWheel'
+import { SlotPicker } from './SlotPicker'
+import { type Slot } from '@/hooks/useSlots'
 
 type Patient   = { id: string; name: string; phone: string | null }
 type Procedure = { id: string; name: string; duration_minutes: number; color: string }
@@ -62,6 +63,7 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
   // Step 3 — time
   const [startTime, setStartTime]         = useState(initialTime?.slice(0, 5) ?? '08:00')
   const [durationMin, setDurationMin]     = useState(30)
+  const [selectedSlot, setSelectedSlot]   = useState<Slot | null>(null)
 
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -120,6 +122,12 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     return () => clearTimeout(t)
   }, [patientQuery])
 
+  // Limpa slot selecionado ao mudar data (os horários livres mudam)
+  useEffect(() => {
+    setSelectedSlot(null)
+    setSelectedChairId('')
+  }, [selectedDate])
+
   function reset() {
     setStep('patient'); setPatientQuery(''); setPatients([]); setSearchDone(false)
     setSelectedPatient(null); setCreating(false)
@@ -129,8 +137,14 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     setSelectedProcedureId(''); setSelectedUnitId(''); setSelectedChairId('')
     setSelectedDate(initialDate ?? format(new Date(), 'yyyy-MM-dd'))
     setStartTime(initialTime?.slice(0, 5) ?? '08:00')
-    setDurationMin(30)
+    setDurationMin(30); setSelectedSlot(null)
     setError(null); setSaving(false)
+  }
+
+  function handleSlotSelect(slot: Slot) {
+    setSelectedSlot(slot)
+    setStartTime(format(parseISO(slot.start_at), 'HH:mm'))
+    setSelectedChairId(slot.chair_id)
   }
 
   async function handleCreatePatient() {
@@ -290,23 +304,13 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
                   {dentists.map(d => <option key={d.id} value={d.id}>{d.user?.name}</option>)}
                 </select>
               </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Unidade">
-                  <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
-                    <option value="">Selecionar...</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Cadeira">
-                  <select value={selectedChairId} onChange={e => setSelectedChairId(e.target.value)}
-                    disabled={!selectedUnitId}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40">
-                    <option value="">Selecionar...</option>
-                    {unitChairs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Unidade">
+                <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+                  <option value="">Selecionar...</option>
+                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
               <Field label="Procedimento">
                 <select value={selectedProcedureId} onChange={e => setSelectedProcedureId(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
@@ -319,36 +323,43 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
           {/* Step 3 — horário */}
           {step === 'time' && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="Data">
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
               </Field>
 
-              <Field label="Início">
-                <div className="border border-gray-200 rounded-lg py-2">
-                  <TimeWheel value={startTime} onChange={setStartTime} />
-                </div>
+              <Field label="Horários disponíveis">
+                <SlotPicker
+                  dentistId={selectedDentistId}
+                  unitId={selectedUnitId}
+                  procedureId={selectedProcedureId}
+                  date={selectedDate}
+                  selected={selectedSlot}
+                  onSelect={handleSlotSelect}
+                />
               </Field>
 
-              {/* Resumo visual */}
-              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Início</p>
-                  <p className="text-xl font-bold text-gray-800">{startTime}</p>
-                </div>
-                <div className="flex-1 mx-3 flex flex-col items-center">
-                  <div className="h-px w-full bg-gray-300 relative">
-                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">
-                      {durationMin} min
+              {/* Resumo visual — só aparece após selecionar */}
+              {selectedSlot && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div className="text-center">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Início</p>
+                    <p className="text-xl font-bold text-gray-800">{startTime}</p>
+                  </div>
+                  <div className="flex-1 mx-3 flex flex-col items-center">
+                    <div className="h-px w-full bg-gray-300 relative">
+                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">
+                        {durationMin} min
+                      </div>
                     </div>
                   </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fim</p>
+                    <p className="text-xl font-bold text-gray-800">{endTimeLabel}</p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fim</p>
-                  <p className="text-xl font-bold text-gray-800">{endTimeLabel}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -377,15 +388,15 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
           {step === 'details' && (
             <button
-              disabled={!selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId}
+              disabled={!selectedDentistId || !selectedUnitId || !selectedProcedureId}
               onClick={() => setStep('time')}
               className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
-              Definir horário
+              Ver horários livres
             </button>
           )}
 
           {step === 'time' && (
-            <button disabled={saving} onClick={handleConfirm}
+            <button disabled={saving || !selectedSlot} onClick={handleConfirm}
               className="flex-1 bg-gradient-to-r from-violet-600 to-rose-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-colors">
               {saving ? 'Agendando...' : 'Confirmar agendamento'}
             </button>
