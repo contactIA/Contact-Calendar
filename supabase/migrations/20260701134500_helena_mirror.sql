@@ -4,6 +4,17 @@
 -- (RLS habilitado SEM policies; acesso via service_role no backend filtrando
 -- por account_id), identico ao restante do schema (ver init_schema e
 -- account_integrations).
+--
+-- DECISOES REGISTRADAS (revisao TASK-003, 03/07/2026):
+-- 1. appt_date/appt_time como TEXT (spec pedia date/time): decisao do
+--    team leader (Andre) — a IA coleta e preenche esses campos como string
+--    livre vinda da Helena; a normalizacao para date/time acontece na
+--    conversao card -> appointment, nao no espelho.
+-- 2. step_mappings (tabela) e a fonte CANONICA do mapeamento status -> etapa.
+--    A coluna account_integrations.step_mappings JSONB (migration 0008) foi
+--    workaround temporario da TASK-011, criado antes desta tabela existir.
+--    TASK-014 em diante deve ler/gravar NESTA tabela; o HelenaIntegrationTab
+--    sera migrado do JSONB para ca (debito tecnico registrado).
 -- ============================================================================
 
 -- 1) Paineis espelhados -------------------------------------------------------
