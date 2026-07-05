@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/client'
+import { TagLinkTable } from '@/components/config/TagLinkTable'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,11 @@ export function HelenaIntegrationTab() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Vínculo de tags (UUID ↔ significado) */}
+            <div className="border-t border-gray-100 pt-4">
+              <TagLinkTable />
             </div>
           </>
         )}
