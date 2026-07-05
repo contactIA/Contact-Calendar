@@ -14,6 +14,7 @@ import { NewAppointmentModal } from './modals/NewAppointmentModal'
 import { RescheduleModal } from './modals/RescheduleModal'
 import { useAppointments, type Appointment } from '@/hooks/useAppointments'
 import { useDentists } from '@/hooks/useDentists'
+import { useScheduleBlocks } from '@/hooks/useScheduleBlocks'
 
 type View = 'day' | 'week' | 'list'
 
@@ -86,6 +87,17 @@ export function AgendaShell() {
     : { page: listPage, page_size: 50, status: listStatus || 'all' }
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
+
+  // Bloqueios (almoço/ausência/reunião/reservado) + expediente dos dentistas.
+  // Dia: busca só o dia exibido; Semana/Lista: a semana corrente.
+  const blocksFrom = view === 'day' ? dateStr : weekStart
+  const blocksTo   = view === 'day' ? dateStr : weekEnd
+  const { blocks, schedules } = useScheduleBlocks(blocksFrom, blocksTo)
+
+  // O filtro de dentista da sidebar também vale para os bloqueios.
+  const visibleBlocks = selectedDentistId
+    ? blocks.filter(b => b.dentist_id === selectedDentistId)
+    : blocks
 
   // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
   const isLoading = loading || loadingDentists
@@ -187,6 +199,8 @@ export function AgendaShell() {
               onAppointmentClick={handleAppointmentClick}
               onSlotClick={handleSlotClick}
               focusRequest={focusRequest}
+              blocks={visibleBlocks}
+              schedules={schedules}
             />
           </div>
         )}
@@ -197,6 +211,8 @@ export function AgendaShell() {
             date={dateStr}
             onAppointmentClick={handleAppointmentClick}
             onDayClick={handleDayClick}
+            blocks={visibleBlocks}
+            dentists={dentists}
           />
         )}
 

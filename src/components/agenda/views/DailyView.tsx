@@ -3,16 +3,50 @@
 import { useState, useRef, useEffect } from 'react'
 import { type Appointment } from '@/hooks/useAppointments'
 import { type Dentist } from '@/hooks/useDentists'
+import { type ScheduleBlock, type DentistSchedule, BLOCK_TYPE_META } from '@/hooks/useScheduleBlocks'
 import { AppointmentBlock } from '../AppointmentBlock'
 
 const HOUR_START = 7
 const HOUR_END   = 20
 const SLOT_H     = 64   // px per 30-min slot → 128px per hour
 const PX_PER_MIN = (SLOT_H * 2) / 60
+const GRID_START = HOUR_START * 60
+const GRID_END   = HOUR_END * 60
 
 function timeToMinutes(time: string) {
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m
+}
+
+// Funde intervalos [start, end) sobrepostos/encostados em uma lista ordenada.
+// Um dentista pode ter dois turnos no mesmo dia (ex.: manhã e tarde em
+// unidades diferentes) — o sombreado é o complemento da união dos turnos.
+function mergeIntervals(list: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...list].sort((a, b) => a[0] - b[0])
+  const merged: Array<[number, number]> = []
+  for (const [s, e] of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e)
+    else merged.push([s, e])
+  }
+  return merged
+}
+
+// Trechos da grade [GRID_START, GRID_END) NÃO cobertos pelos intervalos dados.
+function invertIntervals(covered: Array<[number, number]>): Array<[number, number]> {
+  const gaps: Array<[number, number]> = []
+  let cursor = GRID_START
+  for (const [s, e] of covered) {
+    if (s > cursor) gaps.push([cursor, Math.min(s, GRID_END)])
+    cursor = Math.max(cursor, e)
+    if (cursor >= GRID_END) break
+  }
+  if (cursor < GRID_END) gaps.push([cursor, GRID_END])
+  return gaps
+}
+
+function minutesLabel(min: number) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
 }
 
 function dateToMinutes(iso: string) {
@@ -31,15 +65,22 @@ type Props = {
   onSlotClick: (dentistId: string, startIso: string) => void
   date: string
   focusRequest?: { apptId: string; minutes: number; token: number } | null
+  blocks?: ScheduleBlock[]
+  schedules?: DentistSchedule[]
 }
 
-export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date, focusRequest }: Props) {
+export function DailyView({ appointments, dentists, selectedDentistId, onAppointmentClick, onSlotClick, date, focusRequest, blocks = [], schedules = [] }: Props) {
   const visibleDentists = selectedDentistId
     ? dentists.filter(d => d.id === selectedDentistId)
     : dentists
 
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
   const totalH = (HOUR_END - HOUR_START) * SLOT_H * 2
+
+  // Meia-noite LOCAL do dia exibido — referência para converter os timestamps
+  // UTC dos bloqueios em minutos do dia, no mesmo fuso dos agendamentos.
+  const dayStartMs = new Date(`${date}T00:00:00`).getTime()
+  const weekday = new Date(`${date}T12:00:00`).getDay()
 
   const gridRef = useRef<HTMLDivElement>(null)
   const [highlightId, setHighlightId] = useState<string | null>(null)
@@ -96,6 +137,27 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
         {visibleDentists.map((dentist) => {
           const dentistAppts = appointments.filter(a => a.dentist?.id === dentist.id)
 
+          // Bloqueios do dentista recortados para o dia exibido (em minutos do
+          // dia local) e limitados à janela visível da grade (7h–20h).
+          const dentistBlocks = blocks
+            .filter(b => b.dentist_id === dentist.id)
+            .map(b => {
+              const startMin = (new Date(b.start_at).getTime() - dayStartMs) / 60000
+              const endMin   = (new Date(b.end_at).getTime()   - dayStartMs) / 60000
+              return { ...b, startMin: Math.max(startMin, GRID_START), endMin: Math.min(endMin, GRID_END) }
+            })
+            .filter(b => b.endMin > b.startMin)
+
+          // Fora-de-expediente: complemento dos turnos do dia. Dentista sem
+          // NENHUM expediente cadastrado não é sombreado (dado ausente ≠ folga).
+          const dentistSchedules = schedules.filter(s => s.dentist_id === dentist.id)
+          const todayShifts = dentistSchedules
+            .filter(s => s.day_of_week === weekday)
+            .map(s => [timeToMinutes(s.start_time), timeToMinutes(s.end_time)] as [number, number])
+          const offHours = dentistSchedules.length === 0
+            ? []
+            : invertIntervals(mergeIntervals(todayShifts))
+
           return (
             <div
               key={dentist.id}
@@ -135,6 +197,62 @@ export function DailyView({ appointments, dentists, selectedDentistId, onAppoint
                   )
                 })
               ))}
+
+              {/* Fora de expediente (sombreado, apenas visual — clique atravessa) */}
+              {offHours.map(([s, e]) => (
+                <div
+                  key={`off-${s}`}
+                  className="absolute inset-x-0 pointer-events-none"
+                  style={{
+                    top: (s - GRID_START) * PX_PER_MIN,
+                    height: (e - s) * PX_PER_MIN,
+                    background: 'rgba(100, 116, 139, 0.10)',
+                    zIndex: 1,
+                  }}
+                />
+              ))}
+
+              {/* Faixas de bloqueio (almoço/ausência/reunião/reservado). Sem
+                  onClick e ACIMA dos slots clicáveis: o clique morre aqui e o
+                  modal de novo agendamento não abre em cima de bloqueio. */}
+              {dentistBlocks.map(block => {
+                const meta = BLOCK_TYPE_META[block.type] ?? BLOCK_TYPE_META.reserved
+                const heightPx = (block.endMin - block.startMin) * PX_PER_MIN
+                const compact = heightPx < 44
+                return (
+                  <div
+                    key={block.id}
+                    title={`${meta.label} · ${minutesLabel(block.startMin)}–${minutesLabel(block.endMin)}`}
+                    className="absolute cursor-not-allowed select-none overflow-hidden"
+                    style={{
+                      top: (block.startMin - GRID_START) * PX_PER_MIN,
+                      height: Math.max(heightPx - 2, 20),
+                      left: 4,
+                      right: 4,
+                      background: `repeating-linear-gradient(135deg, ${meta.bg}, ${meta.bg} 8px, #f1f5f9 8px, #f1f5f9 14px)`,
+                      border: `1px solid ${meta.border}`,
+                      borderLeft: `3px solid ${meta.accent}`,
+                      borderRadius: 8,
+                      padding: compact ? '3px 8px' : '6px 8px',
+                      zIndex: 5,
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold" style={{ color: meta.accent }}>
+                        {minutesLabel(block.startMin)}
+                      </span>
+                      <span className="text-[11px] font-semibold truncate" style={{ color: meta.text }}>
+                        {meta.label}
+                      </span>
+                      {!compact && (
+                        <span className="text-[10px] ml-auto" style={{ color: meta.text, opacity: 0.6 }}>
+                          {minutesLabel(block.endMin)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
 
               {/* Appointment blocks */}
               {dentistAppts.map(appt => {

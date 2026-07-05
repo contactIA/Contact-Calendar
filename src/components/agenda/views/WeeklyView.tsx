@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import { format, addDays, startOfWeek, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { type Appointment } from '@/hooks/useAppointments'
+import { type Dentist } from '@/hooks/useDentists'
+import { type ScheduleBlock, BLOCK_TYPE_META } from '@/hooks/useScheduleBlocks'
 
 const STATUS_COLOR: Record<string, string> = {
   scheduled:   'bg-blue-100 border-blue-300 text-blue-800',
@@ -19,9 +21,11 @@ type Props = {
   date: string
   onAppointmentClick: (appt: Appointment, el: HTMLElement) => void
   onDayClick: (date: string) => void
+  blocks?: ScheduleBlock[]
+  dentists?: Dentist[]
 }
 
-export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick }: Props) {
+export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick, blocks = [], dentists = [] }: Props) {
   const weekStart = startOfWeek(new Date(date + 'T12:00:00'), { weekStartsOn: 1 })
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const today = new Date()
@@ -35,6 +39,21 @@ export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick 
     })
     return map
   }, [appointments, date])
+
+  // Bloqueios agrupados pelo dia LOCAL de início (mesma chave dos appointments).
+  const blocksByDay = useMemo(() => {
+    const map: Record<string, ScheduleBlock[]> = {}
+    blocks.forEach(b => {
+      const k = format(new Date(b.start_at), 'yyyy-MM-dd')
+      ;(map[k] ??= []).push(b)
+    })
+    return map
+  }, [blocks])
+
+  const dentistName = (id: string) => {
+    const name = dentists.find(d => d.id === id)?.user?.name
+    return name ? name.split(' ').slice(0, 2).join(' ') : null
+  }
 
   return (
     <div className="flex-1 overflow-auto agenda-scroll">
@@ -66,16 +85,47 @@ export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick 
       <div className="grid grid-cols-7 divide-x divide-gray-100 min-h-96">
         {days.map(d => {
           const dayKey = format(d, 'yyyy-MM-dd')
-          const dayAppts = byDay[dayKey] ?? []
+          const dayAppts  = byDay[dayKey] ?? []
+          const dayBlocks = blocksByDay[dayKey] ?? []
+
+          // Consultas e bloqueios intercalados por horário de início, para o
+          // almoço de 12h aparecer entre a consulta das 11h e a das 14h.
+          const items = [
+            ...dayAppts.map(a => ({ kind: 'appt' as const, start: a.start_at, appt: a })),
+            ...dayBlocks.map(b => ({ kind: 'block' as const, start: b.start_at, block: b })),
+          ].sort((a, b) => a.start.localeCompare(b.start))
 
           return (
             <div key={dayKey} className="p-2 space-y-1 min-h-48">
-              {dayAppts.length === 0 && (
+              {items.length === 0 && (
                 <p className="text-xs text-gray-300 text-center mt-4">—</p>
               )}
-              {dayAppts
-                .sort((a, b) => a.start_at.localeCompare(b.start_at))
-                .map(appt => (
+              {items.map(item => {
+                if (item.kind === 'block') {
+                  const block = item.block
+                  const meta = BLOCK_TYPE_META[block.type] ?? BLOCK_TYPE_META.reserved
+                  const name = dentistName(block.dentist_id)
+                  return (
+                    <div
+                      key={`block-${block.id}`}
+                      className="w-full rounded border px-2 py-1.5 text-xs cursor-not-allowed select-none"
+                      style={{
+                        background: `repeating-linear-gradient(135deg, ${meta.bg}, ${meta.bg} 8px, #f1f5f9 8px, #f1f5f9 14px)`,
+                        borderColor: meta.border,
+                        borderLeft: `3px solid ${meta.accent}`,
+                        color: meta.text,
+                      }}
+                    >
+                      <p className="font-semibold truncate leading-tight">{meta.label}</p>
+                      <p className="text-[10px] opacity-70">
+                        {format(new Date(block.start_at), 'HH:mm')}–{format(new Date(block.end_at), 'HH:mm')}
+                        {name ? ` · ${name}` : ''}
+                      </p>
+                    </div>
+                  )
+                }
+                const appt = item.appt
+                return (
                   <button
                     key={appt.id}
                     onClick={e => onAppointmentClick(appt, e.currentTarget)}
@@ -90,7 +140,8 @@ export function WeeklyView({ appointments, date, onAppointmentClick, onDayClick 
                       {format(new Date(appt.start_at), 'HH:mm')} · {appt.dentist?.user?.name?.split(' ').slice(0, 2).join(' ')}
                     </p>
                   </button>
-                ))}
+                )
+              })}
             </div>
           )
         })}
