@@ -8,6 +8,8 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { type Dentist } from '@/hooks/useDentists'
+import { type Unit } from '@/hooks/useUnits'
+import { type Procedure } from '@/hooks/useProcedures'
 import { DayReportModal } from './DayReportModal'
 
 type Props = {
@@ -19,6 +21,12 @@ type Props = {
   appointments: Array<{ status: string; dentist?: { id: string } | null; patient?: { name: string } | null; start_at: string; procedure?: { name: string } | null }>
   statusFilter: string
   onStatusFilter: (status: string) => void
+  units: Unit[]
+  procedures: Procedure[]
+  unitFilter: string | null
+  procedureFilter: string | null
+  onUnitFilter: (id: string | null) => void
+  onProcedureFilter: (id: string | null) => void
 }
 
 const STATUS_PILLS = [
@@ -30,7 +38,11 @@ const STATUS_PILLS = [
   { value: 'no_show',     color: '#c026d3', bg: '#fdf2f8', label: 'Faltou' },
 ]
 
-export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange, appointments, statusFilter, onStatusFilter }: Props) {
+export function AgendaSidebar({
+  selectedDate, onDateSelect, dentists, selectedDentistId, onDentistChange,
+  appointments, statusFilter, onStatusFilter,
+  units, procedures, unitFilter, procedureFilter, onUnitFilter, onProcedureFilter,
+}: Props) {
   const [viewMonth, setViewMonth] = useState(new Date(selectedDate))
   const [reportOpen, setReportOpen] = useState(false)
   const params = useParams()
@@ -90,6 +102,32 @@ export function AgendaSidebar({ selectedDate, onDateSelect, dentists, selectedDe
               </button>
             )
           })}
+        </div>
+      </div>
+
+      {/* Filtros de unidade e procedimento (TASK-033) — persistem na URL */}
+      <div className="p-4 border-b border-gray-100 space-y-3">
+        <div>
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Unidade</p>
+          <select
+            value={unitFilter ?? ''}
+            onChange={e => onUnitFilter(e.target.value || null)}
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+          >
+            <option value="">Todas as unidades</option>
+            {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Procedimento</p>
+          <select
+            value={procedureFilter ?? ''}
+            onChange={e => onProcedureFilter(e.target.value || null)}
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+          >
+            <option value="">Todos os procedimentos</option>
+            {procedures.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
         </div>
       </div>
 

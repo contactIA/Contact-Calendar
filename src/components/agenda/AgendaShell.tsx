@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { api } from '@/lib/client'
 import { AgendaHeader } from './AgendaHeader'
@@ -10,13 +11,20 @@ import { DailyView } from './views/DailyView'
 import { WeeklyView } from './views/WeeklyView'
 import { ListView } from './views/ListView'
 import { AppointmentPopover } from './AppointmentPopover'
+import { FilterChips, type FilterChip } from './FilterChips'
 import { NewAppointmentModal } from './modals/NewAppointmentModal'
 import { RescheduleModal } from './modals/RescheduleModal'
 import { useAppointments, type Appointment } from '@/hooks/useAppointments'
 import { useDentists } from '@/hooks/useDentists'
+import { useUnits } from '@/hooks/useUnits'
+import { useProcedures } from '@/hooks/useProcedures'
 import { useScheduleBlocks } from '@/hooks/useScheduleBlocks'
 
 type View = 'day' | 'week' | 'list'
+
+// Só aceitamos UUIDs vindos da URL — um valor inválido quebraria a validação
+// Zod do endpoint de appointments (400) e travaria a agenda inteira.
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 function getInitials(name: string) {
   return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
@@ -75,16 +83,81 @@ export function AgendaShell() {
   const [focusRequest, setFocusRequest] = useState<{ apptId: string; minutes: number; token: number } | null>(null)
 
   const { dentists, loading: loadingDentists } = useDentists()
+  const { units } = useUnits()
+  const { procedures } = useProcedures()
+
+  // Filtros de unidade/procedimento (TASK-033): nascem da querystring — assim
+  // sobrevivem à troca de dia E à recarga da página — e voltam para ela a cada
+  // mudança via history.replaceState (sem re-navegar, o Next sincroniza).
+  const searchParams = useSearchParams()
+  const [unitFilter, setUnitFilter] = useState<string | null>(() => {
+    const v = searchParams?.get('unidade')
+    return v && UUID_RE.test(v) ? v : null
+  })
+  const [procedureFilter, setProcedureFilter] = useState<string | null>(() => {
+    const v = searchParams?.get('procedimento')
+    return v && UUID_RE.test(v) ? v : null
+  })
+
+  const setUrlParam = useCallback((key: string, value: string | null) => {
+    const params = new URLSearchParams(window.location.search)
+    if (value) params.set(key, value)
+    else params.delete(key)
+    const qs = params.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }, [])
+
+  const handleUnitFilter = useCallback((id: string | null) => {
+    setUnitFilter(id)
+    setUrlParam('unidade', id)
+    // Dentista selecionado que não atende na nova unidade sai da seleção.
+    if (id) {
+      setSelectedDentistId(prev => {
+        if (!prev) return prev
+        const d = dentists.find(x => x.id === prev)
+        return d?.units?.some(u => u.unit_id === id) ? prev : null
+      })
+    }
+  }, [dentists, setUrlParam])
+
+  const handleProcedureFilter = useCallback((id: string | null) => {
+    setProcedureFilter(id)
+    setUrlParam('procedimento', id)
+  }, [setUrlParam])
+
+  // Unidade filtrada esconde os dentistas que não atendem nela — vale para a
+  // sidebar, as colunas do dia e os bloqueios (não só para as consultas).
+  const visibleDentists = useMemo(
+    () => unitFilter ? dentists.filter(d => d.units?.some(u => u.unit_id === unitFilter)) : dentists,
+    [dentists, unitFilter]
+  )
+
+  // Chips dos filtros ativos: o nome vem das listas carregadas; enquanto elas
+  // não chegam (ou se o id da URL não existir mais), o chip fica de fora — o
+  // filtro segue aplicado na consulta mesmo assim.
+  const activeChips = useMemo(() => {
+    const chips: FilterChip[] = []
+    const unit = unitFilter ? units.find(u => u.id === unitFilter) : null
+    if (unit) chips.push({ key: 'unit', label: unit.name, onRemove: () => handleUnitFilter(null) })
+    const proc = procedureFilter ? procedures.find(p => p.id === procedureFilter) : null
+    if (proc) chips.push({ key: 'procedure', label: proc.name, onRemove: () => handleProcedureFilter(null) })
+    return chips
+  }, [unitFilter, procedureFilter, units, procedures, handleUnitFilter, handleProcedureFilter])
 
   const dateStr = format(date, 'yyyy-MM-dd')
   const weekStart = format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const weekEnd   = format(endOfWeek(date,   { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
+  const sharedFilters = {
+    unit_id:      unitFilter ?? undefined,
+    procedure_id: procedureFilter ?? undefined,
+  }
+
   const filters = view === 'day'
-    ? { date: dateStr, dentist_id: selectedDentistId ?? undefined, status: statusFilter || 'all' }
+    ? { ...sharedFilters, date: dateStr, dentist_id: selectedDentistId ?? undefined, status: statusFilter || 'all' }
     : view === 'week'
-    ? { date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: statusFilter || 'all' }
-    : { page: listPage, page_size: 50, status: listStatus || 'all' }
+    ? { ...sharedFilters, date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: statusFilter || 'all' }
+    : { ...sharedFilters, page: listPage, page_size: 50, status: listStatus || 'all' }
 
   const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
 
@@ -94,10 +167,14 @@ export function AgendaShell() {
   const blocksTo   = view === 'day' ? dateStr : weekEnd
   const { blocks, schedules } = useScheduleBlocks(blocksFrom, blocksTo)
 
-  // O filtro de dentista da sidebar também vale para os bloqueios.
-  const visibleBlocks = selectedDentistId
-    ? blocks.filter(b => b.dentist_id === selectedDentistId)
-    : blocks
+  // Os filtros de dentista e de unidade da sidebar também valem para os bloqueios.
+  const visibleBlocks = useMemo(() => {
+    const unitIds = new Set(visibleDentists.map(d => d.id))
+    return blocks.filter(b =>
+      (selectedDentistId ? b.dentist_id === selectedDentistId : true) &&
+      (unitFilter ? unitIds.has(b.dentist_id) : true)
+    )
+  }, [blocks, selectedDentistId, unitFilter, visibleDentists])
 
   // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
   const isLoading = loading || loadingDentists
@@ -156,12 +233,18 @@ export function AgendaShell() {
       <AgendaSidebar
         selectedDate={date}
         onDateSelect={d => { setDate(d); setView('day') }}
-        dentists={dentists}
+        dentists={visibleDentists}
         selectedDentistId={selectedDentistId}
         onDentistChange={setSelectedDentistId}
         appointments={appointments}
         statusFilter={statusFilter}
         onStatusFilter={setStatusFilter}
+        units={units}
+        procedures={procedures}
+        unitFilter={unitFilter}
+        procedureFilter={procedureFilter}
+        onUnitFilter={handleUnitFilter}
+        onProcedureFilter={handleProcedureFilter}
       />
 
       {/* Main area */}
@@ -181,10 +264,13 @@ export function AgendaShell() {
         <div className="relative flex flex-col flex-1 overflow-hidden">
         <KPIStrip appointments={appointments} statusFilter={statusFilter} onStatusFilter={setStatusFilter} />
 
+        {/* Chips dos filtros ativos de unidade/procedimento (TASK-033) */}
+        <FilterChips chips={activeChips} />
+
         {/* Daily column headers */}
         {view === 'day' && !loadingDentists && (
           <div className="overflow-x-auto flex-shrink-0 bg-white shadow-sm">
-            <DailyHeader dentists={dentists} selectedDentistId={selectedDentistId} appointments={appointments} />
+            <DailyHeader dentists={visibleDentists} selectedDentistId={selectedDentistId} appointments={appointments} />
           </div>
         )}
 
@@ -193,7 +279,7 @@ export function AgendaShell() {
           <div className="flex-1 overflow-x-auto">
             <DailyView
               appointments={appointments}
-              dentists={dentists}
+              dentists={visibleDentists}
               selectedDentistId={selectedDentistId}
               date={dateStr}
               onAppointmentClick={handleAppointmentClick}
@@ -212,7 +298,7 @@ export function AgendaShell() {
             onAppointmentClick={handleAppointmentClick}
             onDayClick={handleDayClick}
             blocks={visibleBlocks}
-            dentists={dentists}
+            dentists={visibleDentists}
           />
         )}
 

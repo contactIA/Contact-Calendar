@@ -9,6 +9,7 @@ export type Dentist = {
   cro: string | null
   specialty: string[]
   user: { id: string; name: string; email: string | null } | null
+  units: { unit_id: string; priority: number }[] | null
 }
 
 export function useDentists() {
