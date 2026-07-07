@@ -842,6 +842,54 @@ export type Database = {
           },
         ]
       }
+      tag_links: {
+        Row: {
+          account_id: string
+          created_at: string
+          family: string
+          helena_tag_id: string
+          id: string
+          meaning: string | null
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          family: string
+          helena_tag_id: string
+          id?: string
+          meaning?: string | null
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          family?: string
+          helena_tag_id?: string
+          id?: string
+          meaning?: string | null
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_links_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tag_links_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       units: {
         Row: {
           account_id: string

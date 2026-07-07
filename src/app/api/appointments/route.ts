@@ -17,9 +17,10 @@ const createSchema = z.object({
 })
 
 const listSchema = z.object({
-  unit_id:    zUuid().optional(),
-  dentist_id: zUuid().optional(),
-  patient_id: zUuid().optional(),
+  unit_id:      zUuid().optional(),
+  dentist_id:   zUuid().optional(),
+  procedure_id: zUuid().optional(),
+  patient_id:   zUuid().optional(),
   date:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_from:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -44,7 +45,7 @@ export const GET = withAuth(async (req, ctx) => {
   const parsed = listSchema.safeParse(params)
   if (!parsed.success) return err(parsed.error.issues[0].message, 400)
 
-  const { unit_id, dentist_id, patient_id, date, date_from, date_to, status, q, page, page_size } = parsed.data
+  const { unit_id, dentist_id, procedure_id, patient_id, date, date_from, date_to, status, q, page, page_size } = parsed.data
   const from = (page - 1) * page_size
 
   // Busca textual global accent-insensitive: o RPC search_appointment_ids casa
@@ -83,6 +84,10 @@ export const GET = withAuth(async (req, ctx) => {
       searchQuery = searchQuery.not('status', 'in', '("cancelled","no_show")')
     }
 
+    // Filtros de unidade/procedimento também valem na busca textual (TASK-033)
+    if (unit_id)      searchQuery = searchQuery.eq('unit_id', unit_id)
+    if (procedure_id) searchQuery = searchQuery.eq('procedure_id', procedure_id)
+
     if (ctx.user.role === 'dentist') {
       const { data: dentist } = await supabaseAdmin
         .from('dentists').select('id').eq('user_id', ctx.user.sub).single()
@@ -101,9 +106,10 @@ export const GET = withAuth(async (req, ctx) => {
     .order('start_at', { ascending: true })
     .range(from, from + page_size - 1)
 
-  if (unit_id)    query = query.eq('unit_id', unit_id)
-  if (dentist_id) query = query.eq('dentist_id', dentist_id)
-  if (patient_id) query = query.eq('patient_id', patient_id)
+  if (unit_id)      query = query.eq('unit_id', unit_id)
+  if (dentist_id)   query = query.eq('dentist_id', dentist_id)
+  if (procedure_id) query = query.eq('procedure_id', procedure_id)
+  if (patient_id)   query = query.eq('patient_id', patient_id)
   if (status && status !== 'all') query = query.eq('status', status as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show')
   else if (!status)               query = query.not('status', 'in', '("cancelled","no_show")')
   if (date) {

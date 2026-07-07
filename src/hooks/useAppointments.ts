@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/client'
-import { format } from 'date-fns'
 
 export type Appointment = {
   id: string
@@ -21,8 +20,11 @@ export type Appointment = {
 
 type Filters = {
   date?: string
+  date_from?: string
+  date_to?: string
   unit_id?: string
   dentist_id?: string
+  procedure_id?: string
   status?: string
   page?: number
   page_size?: number
