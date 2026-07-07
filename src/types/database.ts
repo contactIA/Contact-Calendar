@@ -150,12 +150,16 @@ export type Database = {
           cancelled_at: string | null
           cancelled_reason: string | null
           chair_id: string
+          closed_at: string | null
+          closed_value: number | null
+          confirmation_status: string | null
           created_at: string
           created_by_role: Database["public"]["Enums"]["created_by_role"]
           dentist_id: string
           duration_minutes: number
           end_at: string
           id: string
+          last_sync_status: string | null
           notes: string | null
           patient_id: string
           procedure_id: string
@@ -169,12 +173,16 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_reason?: string | null
           chair_id: string
+          closed_at?: string | null
+          closed_value?: number | null
+          confirmation_status?: string | null
           created_at?: string
           created_by_role: Database["public"]["Enums"]["created_by_role"]
           dentist_id: string
           duration_minutes: number
           end_at: string
           id?: string
+          last_sync_status?: string | null
           notes?: string | null
           patient_id: string
           procedure_id: string
@@ -188,12 +196,16 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_reason?: string | null
           chair_id?: string
+          closed_at?: string | null
+          closed_value?: number | null
+          confirmation_status?: string | null
           created_at?: string
           created_by_role?: Database["public"]["Enums"]["created_by_role"]
           dentist_id?: string
           duration_minutes?: number
           end_at?: string
           id?: string
+          last_sync_status?: string | null
           notes?: string | null
           patient_id?: string
           procedure_id?: string
@@ -662,30 +674,39 @@ export type Database = {
           birth_date: string | null
           created_at: string
           email: string | null
+          helena_contact_id: string | null
+          helena_lead_id: string | null
           id: string
           name: string
           notes: string | null
           phone: string | null
+          phone_e164: string | null
         }
         Insert: {
           account_id: string
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          helena_contact_id?: string | null
+          helena_lead_id?: string | null
           id?: string
           name: string
           notes?: string | null
           phone?: string | null
+          phone_e164?: string | null
         }
         Update: {
           account_id?: string
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          helena_contact_id?: string | null
+          helena_lead_id?: string | null
           id?: string
           name?: string
           notes?: string | null
           phone?: string | null
+          phone_e164?: string | null
         }
         Relationships: [
           {
@@ -842,6 +863,98 @@ export type Database = {
           },
         ]
       }
+      sync_log: {
+        Row: {
+          account_id: string
+          card_id: string | null
+          created_at: string
+          detail: Json | null
+          direction: string | null
+          id: string
+          result: string | null
+        }
+        Insert: {
+          account_id: string
+          card_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          direction?: string | null
+          id?: string
+          result?: string | null
+        }
+        Update: {
+          account_id?: string
+          card_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          direction?: string | null
+          id?: string
+          result?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_log_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sync_log_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "helena_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_outbox: {
+        Row: {
+          account_id: string
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          next_retry_at: string | null
+          operation: string
+          origin: string
+          payload: Json
+          status: string
+        }
+        Insert: {
+          account_id: string
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          operation: string
+          origin: string
+          payload: Json
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          operation?: string
+          origin?: string
+          payload?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_outbox_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tag_links: {
         Row: {
           account_id: string
@@ -972,6 +1085,44 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_events: {
+        Row: {
+          account_id: string
+          event_type: string | null
+          helena_event_id: string
+          id: string
+          payload: Json | null
+          received_at: string
+          status: string | null
+        }
+        Insert: {
+          account_id: string
+          event_type?: string | null
+          helena_event_id: string
+          id?: string
+          payload?: Json | null
+          received_at?: string
+          status?: string | null
+        }
+        Update: {
+          account_id?: string
+          event_type?: string | null
+          helena_event_id?: string
+          id?: string
+          payload?: Json | null
+          received_at?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
