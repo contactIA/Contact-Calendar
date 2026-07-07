@@ -1,5 +1,6 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
+import { encryptToken } from '@/lib/helena'
 import { z } from 'zod'
 
 // account_integrations ainda não está nos tipos gerados (migration 0005).
@@ -79,9 +80,12 @@ export const PUT = withAuth(async (req, ctx) => {
     return err('Nenhum campo para atualizar', 400)
   }
 
+  const updates = { ...parsed.data }
+  if (updates.helena_token) updates.helena_token = encryptToken(updates.helena_token)
+
   const payload = {
     account_id: ctx.user.accountId,
-    ...parsed.data,
+    ...updates,
     updated_at: new Date().toISOString(),
   }
 

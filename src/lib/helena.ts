@@ -1,6 +1,39 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 
 const BASE_URL = process.env.HELENA_BASE_URL ?? 'https://api.wts.chat'
+
+// ---------------------------------------------------------------------------
+// Token crypto — AES-256-GCM, key em INTEGRATIONS_ENCRYPTION_KEY (64 hex chars)
+// Formato armazenado: "enc:<iv_hex>:<auth_tag_hex>:<ciphertext_hex>"
+// Tokens legados (sem prefixo "enc:") são lidos como plaintext para
+// compatibilidade retroativa; um novo save os sobrescreve criptografados.
+// ---------------------------------------------------------------------------
+function getEncKey(): Buffer {
+  const hex = process.env.INTEGRATIONS_ENCRYPTION_KEY
+  if (!hex) throw new Error('INTEGRATIONS_ENCRYPTION_KEY não configurada')
+  const buf = Buffer.from(hex, 'hex')
+  if (buf.length !== 32) throw new Error('INTEGRATIONS_ENCRYPTION_KEY deve ter 64 chars hex (32 bytes)')
+  return buf
+}
+
+export function encryptToken(plaintext: string): string {
+  const iv  = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', getEncKey(), iv)
+  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return `enc:${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`
+}
+
+export function decryptToken(stored: string): string {
+  if (!stored.startsWith('enc:')) return stored  // plaintext legado
+  const parts = stored.split(':')
+  if (parts.length !== 4) throw new Error('Formato de token inválido')
+  const [, ivHex, tagHex, encHex] = parts
+  const decipher = createDecipheriv('aes-256-gcm', getEncKey(), Buffer.from(ivHex, 'hex'))
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'))
+  return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8')
+}
 const FLUXODONTO_URL = process.env.FLUXODONTO_URL ?? 'https://app.fluxodonto.com'
 
 // Config de integração Helena de UMA conta (white-label: uma Helena por clínica).
@@ -32,7 +65,7 @@ export async function getAccountIntegration(accountId: string): Promise<AccountI
     .maybeSingle()
 
   if (!data || !data.helena_enabled || !data.helena_token) return null
-  return data as AccountIntegration
+  return { ...data, helena_token: decryptToken(data.helena_token) } as AccountIntegration
 }
 
 export async function getHelenaTokenForAccount(accountId: string): Promise<string | null> {
@@ -42,7 +75,8 @@ export async function getHelenaTokenForAccount(accountId: string): Promise<strin
     .select('helena_token')
     .eq('account_id', accountId)
     .maybeSingle()
-  return data?.helena_token ?? null
+  const raw = data?.helena_token ?? null
+  return raw ? decryptToken(raw) : null
 }
 
 // Backoff em 429: a Helena limita por conta (1000/5min + 200/5s burst). Respeita
