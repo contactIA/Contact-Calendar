@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { signJwt } from '@/lib/auth'
 import { ok, err } from '@/lib/api'
+import { rateLimit, clientKey } from '@/lib/rateLimit'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -16,6 +17,13 @@ const schema = z.object({
 // POST /api/onboarding/account — cria account + admin user e retorna JWT + URL pronta
 // id é opcional: se informado (vindo da Helena), usa esse UUID; caso contrário gera um novo.
 export async function POST(req: NextRequest) {
+  // FIND-002: onboarding é público. Limita criação de contas por IP para evitar
+  // abuso/criação em massa (5 por hora). Não bloqueia uso legítimo (raro criar
+  // muitas contas do mesmo IP em pouco tempo).
+  if (!rateLimit(`onboarding:${clientKey(req)}`, 5, 60 * 60 * 1000)) {
+    return err('Muitas contas criadas recentemente. Tente novamente mais tarde.', 429)
+  }
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) return err(parsed.error.issues[0].message, 400)

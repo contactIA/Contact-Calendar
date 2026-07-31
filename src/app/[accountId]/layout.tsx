@@ -14,7 +14,10 @@ export default function AccountLayout({
   const { accountId } = use(params)
   const searchParams  = useSearchParams()
   const userId        = searchParams.get('userId')
-  const auth          = useAuth(accountId, userId)
+  // Fluxo white-label: o sistema-pai autentica server-side (com o secret) e
+  // passa o token pronto via ?token=. Ver useAuth / api/auth/url (FIND-001).
+  const urlToken      = searchParams.get('token')
+  const auth          = useAuth(accountId, userId, urlToken)
 
   if (auth.status === 'loading') {
     return (
