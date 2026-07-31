@@ -41,4 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # memoria local
-docs/memoria/
+docs/memoria/graphify-out/
+scratch-tests/
+graphify-out/

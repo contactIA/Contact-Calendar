@@ -7,6 +7,11 @@ import { supabaseAdmin } from '@/lib/supabase'
 // Rota de diagnóstico SEM auth — apenas para desenvolvimento local.
 // ⚠️ Remover antes de deploy em produção.
 export async function GET(req: NextRequest) {
+  // Fail-closed: rota de diagnostico NUNCA responde em producao. Usa service_role
+  // (ignora RLS) e o "secret" e hardcoded — so vale para desenvolvimento local.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'not found' }, { status: 404 })
+  }
   const secret = req.nextUrl.searchParams.get('secret')
   if (secret !== 'helena123') {
     return NextResponse.json({ error: 'Passe ?secret=helena123 na URL' }, { status: 401 })
