@@ -1,6 +1,7 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { syncPatientContact } from '@/lib/helena'
+import { resolveHelenaLink } from '@/lib/patient/resolveHelena'
 import { z } from 'zod'
 
 const updateSchema = z.object({
@@ -30,6 +31,16 @@ export const PATCH = withAuth(async (req, ctx, params) => {
 
   // Best-effort: reflete as mudanças no contato da Helena (não bloqueia a edição).
   await syncPatientContact(ctx.user.accountId, data)
+
+  // TASK-050: se o telefone foi alterado neste PATCH, (re)descobre o vínculo
+  // Helena por telefone. Fire-and-forget — não trava a resposta ao usuário.
+  if (parsed.data.phone !== undefined) {
+    void resolveHelenaLink({
+      accountId: ctx.user.accountId,
+      patientId: params.id,
+      phone:     data.phone,
+    }).catch(() => { /* best-effort: falha de vínculo não afeta a edição */ })
+  }
 
   return ok(data)
 }, ['admin', 'receptionist'])
