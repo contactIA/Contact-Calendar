@@ -436,6 +436,16 @@ export interface PaginatedResponse<T> {
   pageSize:     number
 }
 
+export interface PanelStep {
+  id:               string
+  title:            string
+  position:         number
+  isInitial:        boolean
+  isFinal:          boolean
+  cardCount:        number
+  overdueCardCount: number
+}
+
 export interface Panel {
   id:               string
   title:            string
@@ -447,6 +457,7 @@ export interface Panel {
   overdueCardCount: number
   createdAt:        string
   updatedAt:        string
+  steps?:           PanelStep[]
 }
 
 export interface PanelCard {
@@ -486,8 +497,12 @@ export function listPanels(token: string): Promise<PaginatedResponse<Panel>> {
   return helenaFetch(token, '/crm/v2/panel')
 }
 
-export function getPanel(id: string, token: string): Promise<Panel> {
-  return helenaFetch(token, `/crm/v1/panel/${id}`)
+// IncludeDetails=Steps é o único parâmetro documentado/testado que faz a Helena
+// devolver as etapas do painel (id, title, position, cardCount). Sem ele, `steps`
+// vem sempre null — não existe endpoint dedicado de listagem de etapas.
+export function getPanel(id: string, token: string, includeSteps = false): Promise<Panel> {
+  const query = includeSteps ? '?IncludeDetails=Steps' : ''
+  return helenaFetch(token, `/crm/v1/panel/${id}${query}`)
 }
 
 export function listPanelCards(

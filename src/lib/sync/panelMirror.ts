@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAccountIntegration, getPanel, listPanelCards, type PanelCard } from '@/lib/helena'
 
+const MISSING_STEP_NAME = '(sem nome — mapear em Configurações > Integração Helena)'
+
 export interface SyncResult {
   panelId: string
   panelTitle: string
@@ -22,12 +24,12 @@ export async function syncPanel(accountId: string): Promise<SyncResult> {
   }
   const { helena_token: token, panel_id: helenaPanelId } = integ
 
-  // 2. Fetch panel from Helena — steps come inside the raw response
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawPanel = await getPanel(helenaPanelId, token) as any
+  // 2. Fetch panel + steps. A Helena só devolve as etapas (id, title, position,
+  //    cardCount) quando chamada com ?IncludeDetails=Steps — sem esse parâmetro
+  //    o campo `steps` vem sempre null. Não existe endpoint dedicado de listagem.
+  const rawPanel = await getPanel(helenaPanelId, token, true)
   const panelTitle: string = rawPanel.title ?? ''
-  const rawSteps: { id: string; title: string; order?: number }[] =
-    rawPanel?.steps ?? rawPanel?.columns ?? rawPanel?.phases ?? []
+  const rawSteps = rawPanel.steps ?? []
 
   // 3. Upsert panel
   const { data: panelRow, error: panelErr } = await supabaseAdmin
@@ -41,26 +43,27 @@ export async function syncPanel(accountId: string): Promise<SyncResult> {
   if (panelErr) throw new Error(`Erro ao upsert panel: ${panelErr.message}`)
   const localPanelId = panelRow.id
 
-  // 4. Upsert steps
-  const { data: stepsRows, error: stepsErr } = await supabaseAdmin
-    .from('helena_steps')
-    .upsert(
-      rawSteps.map((s, idx) => ({
-        panel_id:      localPanelId,
-        helena_step_id: s.id,
-        name:           s.title,
-        position:       s.order ?? idx + 1,
-      })),
-      { onConflict: 'panel_id,helena_step_id' },
-    )
-    .select('id, helena_step_id, name')
+  // 4. Upsert steps com nome e posição reais vindos da Helena
+  const stepUpsertPayload = rawSteps.map(s => ({
+    panel_id:       localPanelId,
+    helena_step_id: s.id,
+    name:           s.title,
+    position:       s.position,
+  }))
+
+  const { data: stepsRows, error: stepsErr } = stepUpsertPayload.length > 0
+    ? await supabaseAdmin
+        .from('helena_steps')
+        .upsert(stepUpsertPayload, { onConflict: 'panel_id,helena_step_id' })
+        .select('id, helena_step_id, name, position')
+    : { data: [], error: null }
   if (stepsErr) throw new Error(`Erro ao upsert steps: ${stepsErr.message}`)
 
   const stepIdMap   = new Map<string, string>() // helena_step_id → local uuid
   const stepNameMap = new Map<string, string>() // helena_step_id → display name
   for (const s of (stepsRows ?? [])) {
     stepIdMap.set(s.helena_step_id, s.id)
-    stepNameMap.set(s.helena_step_id, s.name ?? '')
+    stepNameMap.set(s.helena_step_id, s.name ?? MISSING_STEP_NAME)
   }
 
   // 5. Load tag_links for tag family resolution
@@ -103,7 +106,10 @@ export async function syncPanel(accountId: string): Promise<SyncResult> {
   // 8. Build card payloads + counters
   const now = new Date().toISOString()
   const stepCounts = new Map<string, number>()
-  let linked = 0, pendingLink = 0, unlinked = 0
+  // pendingLink: reservado para o futuro match por telefone ambiguo (TASK-050);
+  // hoje a resolucao e binaria (linked por helena_contact_id | unlinked).
+  const pendingLink = 0
+  let linked = 0, unlinked = 0
 
   const cardPayloads = allCards.map(card => {
     const localStepId = card.stepId ? stepIdMap.get(card.stepId) ?? null : null
@@ -152,17 +158,19 @@ export async function syncPanel(accountId: string): Promise<SyncResult> {
     if (cardErr) throw new Error(`Erro ao upsert cards (offset ${i}): ${cardErr.message}`)
   }
 
-  // 10. Build per-step summary for GATE R0
-  const byStep = rawSteps.map(s => ({
-    stepId:   s.id,
-    stepName: stepNameMap.get(s.id) ?? s.title,
-    count:    stepCounts.get(s.id) ?? 0,
-  }))
+  // 10. Build per-step summary for GATE R0 — ordenado pela position real da Helena
+  const byStep = [...rawSteps]
+    .sort((a, b) => a.position - b.position)
+    .map(s => ({
+      stepId:   s.id,
+      stepName: stepNameMap.get(s.id) ?? s.title,
+      count:    stepCounts.get(s.id) ?? 0,
+    }))
 
   return {
     panelId:          helenaPanelId,
     panelTitle,
-    stepsUpserted:    rawSteps.length,
+    stepsUpserted:    stepUpsertPayload.length,
     cardsTotal:       allCards.length,
     cardsLinked:      linked,
     cardsPendingLink: pendingLink,

@@ -912,6 +912,7 @@ export type Database = {
         Row: {
           account_id: string
           attempts: number
+          claimed_at: string | null
           created_at: string
           id: string
           last_error: string | null
@@ -924,6 +925,7 @@ export type Database = {
         Insert: {
           account_id: string
           attempts?: number
+          claimed_at?: string | null
           created_at?: string
           id?: string
           last_error?: string | null
@@ -936,6 +938,7 @@ export type Database = {
         Update: {
           account_id?: string
           attempts?: number
+          claimed_at?: string | null
           created_at?: string
           id?: string
           last_error?: string | null
@@ -1144,6 +1147,22 @@ export type Database = {
           conflict_id: string
           conflict_type: string
           has_conflict: boolean
+        }[]
+      }
+      claim_outbox_batch: {
+        Args: { p_limit?: number; p_lease_seconds?: number }
+        Returns: {
+          account_id: string
+          attempts: number
+          claimed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          next_retry_at: string | null
+          operation: string
+          origin: string
+          payload: Json
+          status: string
         }[]
       }
       find_patients_by_phone: {
