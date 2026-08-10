@@ -53,6 +53,17 @@ export type PanelCard = {
   patient: { id: string; name: string; phone: string | null } | null
 }
 
+/**
+ * Vínculo etiqueta → significado (tabela tag_links, TASK-013).
+ * O card guarda o UUID da tag; é isto que traduz para texto legível.
+ * Adicionado na TASK-042 para o KanbanCard poder pintar as etiquetas.
+ */
+export type PanelTagLink = {
+  helena_tag_id: string
+  family: 'unit' | 'crc' | 'channel'
+  meaning: string | null
+}
+
 export type PanelInfo = {
   id: string
   helena_panel_id: string
@@ -75,6 +86,7 @@ type PanelCardsResponse = {
   source: 'mirror'
   panel: PanelInfo
   steps: PanelStep[]
+  tags: PanelTagLink[]
   cards: PanelCard[]
   total: number
   returned: number
@@ -212,6 +224,7 @@ export function usePanelCards(accountId: string, filters: PanelCardsFilters = {}
   return {
     panel:  data?.panel  ?? null,
     steps:  data?.steps  ?? [],
+    tags:   data?.tags   ?? [],
     cards:  data?.cards  ?? [],
     total:  data?.total  ?? 0,
     truncated:        data?.truncated ?? false,
