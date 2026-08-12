@@ -544,6 +544,29 @@ export function moveCard(
   })
 }
 
+export interface CreateCardInput {
+  contactId?: string | null
+  title?:     string | null
+  stepId?:    string
+}
+
+// ⚠️ Endpoint NÃO confirmado contra a API real da Helena (sem doc disponível
+// no repo — mesma situação que motivou o /api/dev/sync-check por tentativa).
+// Espelha a convenção de moveCard (PUT /crm/v2/panel/card/{id}); aqui é POST
+// na coleção, sem StepId por padrão (a Helena decide a etapa inicial do
+// painel; o move para a etapa certa vem depois, via outbox). CONFIRMAR COM
+// ANDRÉ antes de mergear esta task — ele é par obrigatório da TASK-022.
+export function createCard(
+  panelId: string,
+  input: CreateCardInput,
+  token: string,
+): Promise<PanelCard> {
+  return helenaFetch(token, '/crm/v2/panel/card', {
+    method: 'POST',
+    body: JSON.stringify({ panelId, ...input }),
+  })
+}
+
 export function getCardNotes(
   cardId: string,
   token: string,

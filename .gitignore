@@ -44,3 +44,6 @@ next-env.d.ts
 docs/memoria/graphify-out/
 scratch-tests/
 graphify-out/
+
+# config local do Claude Code (pessoal, não compartilhada)
+.claude/
