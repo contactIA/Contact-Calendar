@@ -222,6 +222,15 @@ export function AgendaSidebar({
       <div className="p-4">
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Atalhos</p>
         <div className="space-y-1.5">
+          {/* Painéis (TASK-042): mesmo lugar onde já moram os outros saltos de
+              tela. O caminho de volta é o "‹" no header do kanban. */}
+          <button
+            onClick={() => router.push(`/${accountId}/paineis${userQuery}`)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          >
+            <span className="text-sm">🗂️</span>
+            Painéis (funil)
+          </button>
           <button
             onClick={() => router.push(`/${accountId}/pacientes${userQuery}`)}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"

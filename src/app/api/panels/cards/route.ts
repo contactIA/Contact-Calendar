@@ -14,6 +14,13 @@
 // Devolve os cards com a etapa já resolvida + a lista das etapas (colunas) na
 // ordem do painel real, INCLUSIVE as etapas vazias — o KanbanBoard (TASK-042)
 // precisa desenhar a coluna mesmo quando ela não tem card nenhum.
+//
+// TASK-042 acrescentou o bloco `tags`: os vínculos de tag_links (TASK-013) da
+// conta. Motivo: o card guarda o UUID da etiqueta (tag_ids, unit_tag, crc_tag,
+// origin_tag), não o texto. Sem esse bloco o kanban só teria UUID para mostrar.
+// A leitura é do ESPELHO (tabela local tag_links) — continua valendo a regra de
+// ouro acima: nada de bater na Helena aqui (a rota admin que lista tags chama a
+// API da Helena; esta NÃO pode).
 // ============================================================================
 
 import { withAuth, ok, err } from '@/lib/api'
@@ -142,6 +149,21 @@ export const GET = withAuth(async (req, ctx) => {
 
   if (stepsErr) return err(`Erro ao ler etapas: ${stepsErr.message}`, 500)
 
+  // ---- 2b. etiquetas vinculadas (TASK-042) --------------------------------
+  // UUID da tag na Helena → família (unit/crc/channel) + significado legível.
+  // É o dicionário que o KanbanCard usa para transformar
+  // "5d2b7643-1dc4-..." em "Unidade Centro".
+  //
+  // Falha aqui NÃO derruba o kanban: sem o dicionário o board ainda desenha as
+  // colunas e os cards, só sem o texto das etiquetas. Card visível sem etiqueta
+  // é degradação; tela de erro por causa de um rótulo, não.
+  const { data: tagLinks, error: tagsErr } = await supabaseAdmin
+    .from('tag_links')
+    .select('helena_tag_id, family, meaning')
+    .eq('account_id', accountId)
+
+  if (tagsErr) console.error('[panels/cards] falha ao ler tag_links:', tagsErr.message)
+
   // ---- 3. cards ------------------------------------------------------------
   let query = supabaseAdmin
     .from('helena_cards')
@@ -191,6 +213,9 @@ export const GET = withAuth(async (req, ctx) => {
       position:       s.position,
       count:          countByStep.get(s.id) ?? 0,
     })),
+    // Dicionário de etiquetas da conta (TASK-042). Vem sempre, mesmo vazio —
+    // assim o cliente não precisa testar `undefined`.
+    tags: tagLinks ?? [],
     // Cards sem etapa resolvida (step_id null) existem: o Panel Mirror grava
     // null quando o StepId da Helena não está no espelho. O board mostra num
     // balde "(sem etapa)" em vez de sumir com o card.
