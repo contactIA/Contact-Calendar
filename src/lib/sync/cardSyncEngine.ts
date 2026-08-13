@@ -251,10 +251,17 @@ function makeProdDeps(): CardSyncDeps {
       return data.id
     },
     async loadTagLinks(accountId) {
+      // ORDER BY determinístico: se houver 2 tags Helena p/ mesma unidade/meaning
+      // (a UNIQUE(account_id, helena_tag_id) não impede isso), resolveTagsToAdd
+      // usa .find() e pegaria uma ordem arbitrária do banco. Como tags são MERGE,
+      // uma escolha errada "gruda" no card. Regra: a mais recente vence; id como
+      // desempate garante ordem total (nunca empata). Achado do Gabriel — TASK-022.
       const { data, error } = await supabaseAdmin
         .from('tag_links')
         .select('helena_tag_id, family, meaning, unit_id')
         .eq('account_id', accountId)
+        .order('created_at', { ascending: false })
+        .order('id',         { ascending: false })
       if (error) throw new Error(`Erro ao ler tag_links: ${error.message}`)
       return data ?? []
     },

@@ -104,6 +104,45 @@ export const PUT = withAuth(async (req, ctx) => {
     }
   }
 
+  // Anti-duplicidade de DESTINO (achado TASK-022): a UNIQUE(account_id,helena_tag_id)
+  // impede a mesma tag repetida, mas NÃO impede 2 tags Helena diferentes apontando
+  // p/ a mesma unidade (family='unit') ou o mesmo significado (family='crc'). Como o
+  // sync usa .find() sobre esses vínculos e tags são MERGE, uma colisão de destino
+  // tornaria a escolha ambígua. Rejeitamos aqui, com erro legível.
+  const destinationKey = (r: { family: string; unit_id: string | null; meaning: string | null }) =>
+    r.family === 'unit'
+      ? `unit:${r.unit_id}`
+      : `${r.family}:${(r.meaning ?? '').trim().toLowerCase()}`
+
+  const helenaIdsInPayload = new Set(rows.map(r => r.helena_tag_id))
+
+  // 1) colisão dentro do próprio payload
+  const seen = new Map<string, string>() // destino -> helena_tag_id
+  for (const r of rows) {
+    const key = destinationKey(r)
+    const clash = seen.get(key)
+    if (clash && clash !== r.helena_tag_id) {
+      return err(`Duas tags (${clash} e ${r.helena_tag_id}) apontam para o mesmo destino (${key}). Cada unidade/significado deve ter uma única tag.`, 400)
+    }
+    seen.set(key, r.helena_tag_id)
+  }
+
+  // 2) colisão contra vínculos JÁ existentes (que não estão sendo re-salvos nem removidos)
+  const removedIds = new Set(toUnlink.map(l => l.helena_tag_id))
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('tag_links')
+    .select('helena_tag_id, family, meaning, unit_id')
+    .eq('account_id', accountId)
+  if (existingError) return err(existingError.message, 500)
+  for (const e of existing ?? []) {
+    if (helenaIdsInPayload.has(e.helena_tag_id) || removedIds.has(e.helena_tag_id)) continue
+    const key = destinationKey(e)
+    const clash = seen.get(key)
+    if (clash) {
+      return err(`A tag ${clash} colide com a tag existente ${e.helena_tag_id} no mesmo destino (${key}). Remova uma das duas.`, 400)
+    }
+  }
+
   if (toUnlink.length > 0) {
     const { error } = await supabaseAdmin
       .from('tag_links')
