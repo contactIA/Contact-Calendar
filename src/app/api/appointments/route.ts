@@ -1,6 +1,7 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { notifyAppointmentBooked } from '@/lib/helena'
+import { enqueueCardMove } from '@/lib/sync/cardSyncEngine'
 import { z } from 'zod'
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
@@ -185,12 +186,12 @@ export const POST = withAuth(async (req, ctx) => {
   // Best-effort: confirmação imediata + lembrete agendado na Helena.
   const { data: info } = await supabaseAdmin
     .from('appointments')
-    .select('patient:patients(name, phone), dentist:dentists(user:users(name)), procedure:procedures(name)')
+    .select('patient:patients(name, phone, helena_contact_id), dentist:dentists(user:users(name)), procedure:procedures(name)')
     .eq('id', data.id)
     .single()
 
   if (info) {
-    const patient = info.patient as { name: string | null; phone: string | null } | null
+    const patient = info.patient as { name: string | null; phone: string | null; helena_contact_id: string | null } | null
     const reminderId = await notifyAppointmentBooked(ctx.user.accountId, {
       phone:         patient?.phone,
       startAtISO:    data.start_at,
@@ -202,6 +203,17 @@ export const POST = withAuth(async (req, ctx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: reminderId }).eq('id', data.id)
     }
+
+    // fire-and-enqueue: move o card pra AGENDADOS no funil (TASK-022) sem travar a resposta.
+    void enqueueCardMove(ctx.user.accountId, {
+      kind:          'created',
+      appointmentId: data.id,
+      patientId:     data.patient_id,
+      contactId:     patient?.helena_contact_id ?? null,
+      leadName:      patient?.name ?? null,
+      unitId:        data.unit_id,
+      apptLabel:     new Date(data.start_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+    }).catch(e => console.error('[card-sync] enqueueCardMove falhou (created)', e))
   }
 
   return ok(data, 201)

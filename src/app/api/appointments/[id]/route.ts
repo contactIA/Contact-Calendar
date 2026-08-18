@@ -1,6 +1,7 @@
 import { withAuth, ok, err } from '@/lib/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { rescheduleReminder } from '@/lib/helena'
+import { enqueueCardMove } from '@/lib/sync/cardSyncEngine'
 import { z } from 'zod'
 
 const rescheduleSchema = z.object({
@@ -70,12 +71,12 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   // Best-effort: move o lembrete da Helena para o novo horário.
   const { data: info } = await supabaseAdmin
     .from('appointments')
-    .select('start_at, patient:patients(name, phone), dentist:dentists(user:users(name)), procedure:procedures(name)')
+    .select('start_at, patient:patients(name, phone, helena_contact_id), dentist:dentists(user:users(name)), procedure:procedures(name)')
     .eq('id', id)
     .single()
 
   if (info) {
-    const patient = info.patient as { name: string | null; phone: string | null } | null
+    const patient = info.patient as { name: string | null; phone: string | null; helena_contact_id: string | null } | null
     const newReminderId = await rescheduleReminder(ctx.user.accountId, existing.reminder_message_id, {
       phone:         patient?.phone,
       startAtISO:    info.start_at,
@@ -85,6 +86,18 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabaseAdmin as any).from('appointments').update({ reminder_message_id: newReminderId }).eq('id', id)
+
+    // fire-and-enqueue: move o card pra REAGENDADO no funil (TASK-022) sem travar
+    // a resposta. apptLabel usa o start_at NOVO (data), não o antigo.
+    void enqueueCardMove(ctx.user.accountId, {
+      kind:          'rescheduled',
+      appointmentId: data.id,
+      patientId:     data.patient_id,
+      contactId:     patient?.helena_contact_id ?? null,
+      leadName:      patient?.name ?? null,
+      unitId:        data.unit_id,
+      apptLabel:     new Date(data.start_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+    }).catch(e => console.error('[card-sync] enqueueCardMove falhou (rescheduled)', e))
   }
 
   return ok(data)
