@@ -65,7 +65,11 @@ export function RescheduleModal({ open, appointment, dentists, onClose, onSaved 
     setSaving(true); setError('')
     try {
       await api.patch(`/api/appointments/${appointment!.id}`, {
-        start_at:         `${date}T${time}:00.000Z`,
+        // date/time vêm dos inputs no fuso LOCAL (preenchidos com date-fns format,
+        // linhas 36-37). Concatenar um "Z" re-etiquetaria essa leitura local como
+        // UTC e jogava a consulta 3h para trás a cada salvamento. Parseia como
+        // local e converte para UTC de verdade — mesmo padrão do NewAppointmentModal.
+        start_at:         new Date(`${date}T${time}:00`).toISOString(),
         duration_minutes: duration,
         dentist_id:       dentistId || undefined,
         chair_id:         chairId || undefined,
