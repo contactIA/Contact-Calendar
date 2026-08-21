@@ -159,7 +159,7 @@ export function AgendaShell() {
     ? { ...sharedFilters, date_from: weekStart, date_to: weekEnd, dentist_id: selectedDentistId ?? undefined, page_size: 200, status: statusFilter || 'all' }
     : { ...sharedFilters, page: listPage, page_size: 50, status: listStatus || 'all' }
 
-  const { appointments, total, loading, updateStatus, create, refetch } = useAppointments(filters)
+  const { appointments, total, loading, updateStatus, closeOutcome, create, refetch } = useAppointments(filters)
 
   // Bloqueios (almoço/ausência/reunião/reservado) + expediente dos dentistas.
   // Dia: busca só o dia exibido; Semana/Lista: a semana corrente.
@@ -335,6 +335,7 @@ export function AgendaShell() {
           anchorEl={popover.el}
           onClose={() => setPopover(null)}
           onStatusChange={(id, status) => updateStatus(id, status)}
+          onClose_outcome={(id, outcome, closedValue) => closeOutcome(id, outcome, closedValue)}
           onReschedule={appt => {
             setRescheduleAppt(appt)
             setPopover(null)

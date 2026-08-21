@@ -8,12 +8,12 @@ import { type Appointment } from '@/hooks/useAppointments'
 import { api } from '@/lib/client'
 
 const STATUS_CHIP: Record<string, { label: string; bg: string; color: string }> = {
-  scheduled:   { label: 'Agendado',       bg: '#eff6ff', color: '#3b82f6' },
-  confirmed:   { label: 'Confirmado',     bg: '#ecfdf5', color: '#10b981' },
-  in_progress: { label: 'Em atendimento', bg: '#fffbeb', color: '#f59e0b' },
-  completed:   { label: 'Concluído',      bg: '#f3f4f6', color: '#6b7280' },
-  cancelled:   { label: 'Cancelado',      bg: '#fef2f2', color: '#ef4444' },
-  no_show:     { label: 'Faltou',         bg: '#fdf2f8', color: '#c026d3' },
+  scheduled:   { label: 'Agendado',        bg: '#eff6ff', color: '#3b82f6' },
+  confirmed:   { label: 'Confirmado',      bg: '#ecfdf5', color: '#10b981' },
+  in_progress: { label: 'Em atendimento',  bg: '#fffbeb', color: '#f59e0b' },
+  completed:   { label: 'Concluído',       bg: '#f3f4f6', color: '#6b7280' },
+  cancelled:   { label: 'Cancelado',       bg: '#fef2f2', color: '#ef4444' },
+  no_show:     { label: 'Faltou',          bg: '#fdf2f8', color: '#c026d3' },
 }
 
 const NEXT_ACTIONS: Record<string, { label: string; status: string; variant: 'confirm' | 'danger' | 'warn' | 'neutral' }[]> = {
@@ -36,13 +36,25 @@ type Props = {
   anchorEl: HTMLElement | null
   onClose: () => void
   onStatusChange: (id: string, status: string) => void
+  // TASK-035: desfecho comercial (won com valor / lost). Não muda o status clínico.
+  onClose_outcome: (id: string, outcome: 'won' | 'lost', closedValue?: number) => void
   onReschedule: (appointment: Appointment) => void
 }
 
-export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusChange, onReschedule }: Props) {
+export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusChange, onClose_outcome, onReschedule }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const { mounted, closing } = useAnimatedMount(true, 140)
   const [wppLoading, setWppLoading] = useState(false)
+  // TASK-035: captura do valor no fechamento (só quando a consulta está 'completed').
+  const [showCloseInput, setShowCloseInput] = useState(false)
+  const [closeValue, setCloseValue] = useState('')
+
+  function confirmClose() {
+    const value = Number(closeValue.replace(',', '.'))
+    if (!(value > 0)) return
+    onClose_outcome(appointment.id, 'won', value)
+    onClose()
+  }
 
   async function openAtendimento() {
     if (!phone) return
@@ -133,6 +145,55 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
 
         {/* Action buttons */}
         <div className="space-y-2">
+          {/* TASK-035: desfecho de uma consulta concluída — Fechou (com valor) / Não fechou */}
+          {appointment.status === 'completed' && (
+            showCloseInput ? (
+              <div className="flex flex-col gap-2 bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
+                <label className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">
+                  Valor fechado (R$)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    autoFocus
+                    value={closeValue}
+                    onChange={e => setCloseValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') confirmClose() }}
+                    placeholder="0,00"
+                    className="flex-1 min-w-0 text-[13px] font-medium px-2.5 py-1.5 rounded-lg border border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                  <button
+                    onClick={confirmClose}
+                    disabled={!(Number(closeValue.replace(',', '.')) > 0)}
+                    className="text-[12px] font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    style={{ background: '#059669' }}
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCloseInput(true)}
+                  className="flex-1 text-[12px] font-semibold py-2 rounded-xl text-white transition-opacity hover:opacity-90"
+                  style={{ background: '#059669' }}
+                >
+                  💰 Fechou
+                </button>
+                <button
+                  onClick={() => { onClose_outcome(appointment.id, 'lost'); onClose() }}
+                  className="flex-1 text-[12px] font-semibold py-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  Não fechou
+                </button>
+              </div>
+            )
+          )}
+
           {actions.length > 0 && (
             <div className="flex gap-2">
               {actions.map(a => (

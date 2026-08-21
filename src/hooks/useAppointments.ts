@@ -60,7 +60,20 @@ export function useAppointments(filters: Filters) {
 
   const updateStatus = useCallback(
     async (id: string, status: string, reason?: string) => {
-      await api.patch(`/api/appointments/${id}/status`, { status, cancelled_reason: reason })
+      await api.patch(`/api/appointments/${id}/status`, { status, reason })
+      await fetch()
+    },
+    [fetch]
+  )
+
+  // TASK-035: registra o desfecho comercial de uma consulta concluída sem mudar
+  // seu status (fica 'completed'). 'won' exige valor > 0.
+  const closeOutcome = useCallback(
+    async (id: string, outcome: 'won' | 'lost', closedValue?: number) => {
+      await api.patch(`/api/appointments/${id}/status`, {
+        close: outcome,
+        ...(closedValue != null && { closed_value: closedValue }),
+      })
       await fetch()
     },
     [fetch]
@@ -91,5 +104,5 @@ export function useAppointments(filters: Filters) {
     [fetch]
   )
 
-  return { appointments, total, loading, error, refetch: fetch, updateStatus, reschedule, create }
+  return { appointments, total, loading, error, refetch: fetch, updateStatus, closeOutcome, reschedule, create }
 }
