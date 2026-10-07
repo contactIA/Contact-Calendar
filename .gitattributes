@@ -1,0 +1,4 @@
+# As migrações ficam com quebra de linha LF em qualquer máquina: o hash de cada
+# arquivo é registrado no banco (agenda.__drizzle_migrations), e o CI e a VPS são
+# Linux. Com CRLF no Windows, o mesmo arquivo teria outro hash.
+drizzle/** text eol=lf
