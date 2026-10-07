@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    env:
+      README_API_KEY: ${{ secrets.README_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # `next typegen` gera os tipos de rota antes do tsc, como no CRM.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run deps:check
+      - run: npm run build
+      # A documentação no ReadMe, no mesmo projeto da do CRM: o contrato é validado
+      # em todo PR e, na master, enviado depois de tudo acima passar. A CLI fica em
+      # versão fixa, a mesma do CRM. O segredo README_API_KEY quem cadastra é a
+      # equipe; sem ele, o envio é pulado.
+      - run: npm run docs:readme -- "$RUNNER_TEMP/openapi.json"
+      - run: npx --yes rdme@10.9.6 openapi validate "$RUNNER_TEMP/openapi.json"
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/master' && env.README_API_KEY != ''
+        run: npx --yes rdme@10.9.6 openapi upload "$RUNNER_TEMP/openapi.json" --slug agenda.json --confirm-overwrite --key "$README_API_KEY"
+
+  # As duas imagens do deploy (Dockerfile), sem publicar nada: um Dockerfile
+  # quebrado aparece aqui, e não na VPS no meio de um deploy.
+  imagens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target app -t agenda-contactia:ci .
+      - run: docker build --target worker -t agenda-contactia-worker:ci .
+      # O worker sobe com as dependências de produção: sem banco, tem que falhar
+      # pedindo o DATABASE_URL, e não por falta de pacote.
+      - run: |
+          saida=$(docker run --rm agenda-contactia-worker:ci 2>&1 || true)
+          echo "$saida"
+          echo "$saida" | grep -q 'DATABASE_URL ausente'

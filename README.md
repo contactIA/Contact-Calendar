@@ -6,10 +6,12 @@ A recepção, os dentistas e o gestor usam a interface; o agente de IA do
 WhatsApp usa os endpoints `/api/agent/*`. Os dois passam pelas mesmas regras e
 enxergam os mesmos horários livres.
 
-> **Em estudo:** ligar a agenda ao CRM ContactIA (os painéis CRC1 e CRC2) e
-> trazer o código para a arquitetura do CRM. O funil de leads não mora mais
-> aqui: a camada que espelhava e movia os cards do painel nativo da plataforma
-> saiu em outubro de 2026.
+> **Em migração para a arquitetura do CRM ContactIA**, como app próprio ligado ao
+> CRM pela API ([ADR 0001](docs/adr/0001-app-proprio-com-a-arquitetura-do-crm.md),
+> [plano](docs/migracao-para-a-arquitetura-do-crm.md)). O código novo convive com
+> o antigo até o corte; este README descreve os dois. O funil de leads não mora
+> mais aqui: a camada que espelhava o painel nativo da plataforma saiu em outubro
+> de 2026.
 
 ## Visão geral
 
@@ -180,7 +182,13 @@ Depois de mexer no esquema, gere de novo `src/types/database.ts`.
 
 ## Variáveis de ambiente
 
+O modelo está em `.env.example`.
+
 ```bash
+# Código novo
+DATABASE_URL=                         # Postgres do projeto do CRM (pooler), esquema agenda
+
+# Código antigo
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=            # só no servidor
 JWT_SECRET=                           # openssl rand -base64 32
@@ -197,15 +205,43 @@ Quem preenche os segredos é a equipe.
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000
-npm run lint
-npx tsc --noEmit
+npm run dev          # http://localhost:3000
+npm run worker       # o processo das tarefas em segundo plano
+npm run verificar    # tipos, lint, testes e regra de dependência
 npm run build
+npm run db:gerar     # gera a migração do esquema agenda em ./drizzle
 ```
 
-Não há testes automatizados nem CI.
+- **API nova:** a referência fica em `/api/docs` e o contrato em
+  `/api/openapi.json`. As rotas novas respondem em `/api/v1`; as antigas
+  continuam nos endereços delas até saírem.
+- **Testes:** vitest. Os de banco (`testes/banco/`) rodam num Postgres dentro do
+  processo (PGlite), com as migrações reais e as extensões `btree_gist` e
+  `unaccent`.
+- **CI** (GitHub Actions): `verificar`, o build, as duas imagens do Docker e a
+  validação do contrato. Na `master`, o contrato vai para o ReadMe, se o segredo
+  `README_API_KEY` estiver cadastrado no repositório.
+- No lint, os erros que o código antigo já tinha aparecem como aviso
+  (`eslint.config.mjs`); o código novo segue as regras inteiras.
 
 ## Estrutura
+
+Código novo (arquitetura do CRM, regra de dependência em `.dependency-cruiser.cjs`):
+
+```
+src/
+├── modulos/<modulo>/{dominio,aplicacao,infraestrutura}   entra a partir da fase 3
+├── api/                 API em Hono: roteador, erros, rotas de /api/v1
+├── infra/               banco (Drizzle, esquema agenda, migrações) e fila (pg-boss)
+├── compartilhado/       erros de domínio e funções puras
+├── worker/              processo das tarefas em segundo plano
+├── composicao.ts        liga cada porta ao seu adaptador
+└── app/api/[[...rota]]/ entrega /api/* ao Hono
+testes/                  testes de integração (API e banco no PGlite)
+drizzle/                 migrações do esquema agenda
+```
+
+Código antigo (sai fase a fase):
 
 ```
 src/

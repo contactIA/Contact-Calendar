@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Build enxuta para o container da VPS, como no CRM (ADR 0001).
+  output: 'standalone',
 };
 
 export default nextConfig;

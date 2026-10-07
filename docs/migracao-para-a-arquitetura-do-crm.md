@@ -11,7 +11,7 @@ incremental sem convivência com dados vivos.
 |---|---|---|
 | 0 | Limpeza: sai a camada do painel nativo e o código morto | feita |
 | 1 | Decisão e plano (ADR 0001 e este documento) | feita |
-| 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | médio |
+| 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | feita |
 | 3 | Esquema `agenda`: migração base tirada do banco real, testes de banco (sobreposição por profissional e por cadeira, telefone repetido, mesma clínica nas chaves) | médio |
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | grande |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs` | médio |
@@ -36,13 +36,20 @@ incremental sem convivência com dados vivos.
 - **Enquanto a migração não termina**, o código novo fica num ramo. A `master`
   publica na Vercel a cada push.
 
-## Em aberto
+## Decidido com a equipe (2026-10-07)
 
-1. **Quem entra e como.** O dentista tem usuário na plataforma? Se não tiver,
-   o profissional vira um cadastro próprio, ligado a um usuário quando houver.
-2. **Recomeçar vazio** e recriar à mão as configurações das clínicas reais?
-3. **A API do agente** fica em `/api/agent/*` como hoje, ou segue o padrão do CRM
-   (`/api/v1/...`)? A única chave da IA nunca foi usada.
-4. **O domínio** (por exemplo, `agenda.contactia.com.br`).
-5. **Quem manda o lembrete da consulta:** a agenda ou o Agendados do CRM. Nunca
-   os dois.
+1. **Quem entra.** O dentista pode ter usuário na plataforma: ele entra pelo item
+   de menu como a recepção e o gestor. O profissional continua um cadastro da
+   agenda, ligado ao usuário quando houver.
+2. **Recomeçar vazio.** Nenhuma clínica usa a agenda em produção: o banco novo
+   nasce vazio, sem migrar dados.
+3. **A API segue o padrão do CRM** (`/api/v1/...`, campos em camelCase, erros
+   `{ erro, codigo }`), inclusive a do agente. A documentação vai para o ReadMe,
+   como a do CRM: o CI envia o contrato a cada push na `master`.
+4. **O domínio é `agenda.contactia.com.br`.** O registro ainda não existe.
+5. **O lembrete da consulta tem dois caminhos, sincronizados.** A clínica pode
+   escolher na agenda ou no CRM por onde o lembrete sai, e a escolha feita num
+   aparece igual no outro. Uma consulta nunca recebe dois lembretes. Proposta: a
+   escolha fica guardada num lugar só (o CRM), e a tela da agenda lê e grava pela
+   API do CRM. Hoje a configuração do gestor no CRM é só da tela, então o CRM
+   precisa de uma rota para a chave da integração.
