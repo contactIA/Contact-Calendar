@@ -49,7 +49,6 @@ export type AccountIntegration = {
   tag_scheduled:        string | null
   tag_completed:        string | null
   tag_no_show:          string | null
-  panel_id:             string | null
 }
 
 // Carrega a config da conta. Retorna null quando a integração não está
@@ -143,31 +142,10 @@ export function buildSessionUrl(sessionId: string): string {
   return `${FLUXODONTO_URL}/chat2/sessions/${sessionId}`
 }
 
-export function sendText(token: string, to: string, from: string, text: string) {
-  return helenaFetch(token, '/chat/v1/send/text', {
-    method: 'POST',
-    body: JSON.stringify({ to, from, text }),
-  })
-}
-
-export function sendSessionMessage(token: string, sessionId: string, text: string) {
-  return helenaFetch(token, `/chat/v1/session/${sessionId}/message`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  })
-}
-
 export function transferToTeam(token: string, sessionId: string, departmentId: string) {
   return helenaFetch(token, `/chat/v1/session/${sessionId}/transfer`, {
     method: 'PUT',
     body: JSON.stringify({ type: 'DEPARTMENT', newDepartmentId: departmentId }),
-  })
-}
-
-export function completeSession(token: string, sessionId: string, reactivateOnNewMessage = true) {
-  return helenaFetch(token, `/chat/v1/session/${sessionId}/complete`, {
-    method: 'PUT',
-    body: JSON.stringify({ reactivateOnNewMessage }),
   })
 }
 
@@ -424,165 +402,3 @@ export async function listChannels(token: string): Promise<HelenaChannel[]> {
     })
     .filter(c => c.id)
 }
-
-// ─── CRM Types (TASK-010) ─────────────────────────────────────────────────────
-
-export interface PaginatedResponse<T> {
-  items:        T[]
-  totalItems:   number
-  totalPages:   number
-  hasMorePages: boolean
-  pageNumber:   number
-  pageSize:     number
-}
-
-export interface PanelStep {
-  id:               string
-  title:            string
-  position:         number
-  isInitial:        boolean
-  isFinal:          boolean
-  cardCount:        number
-  overdueCardCount: number
-}
-
-export interface Panel {
-  id:               string
-  title:            string
-  description:      string | null
-  key:              string
-  archived:         boolean
-  scope:            'COMPANY' | 'USER'
-  type:             'MANAGEMENT' | string
-  overdueCardCount: number
-  createdAt:        string
-  updatedAt:        string
-  steps?:           PanelStep[]
-}
-
-export interface PanelCard {
-  id:          string
-  title:       string
-  description: string | null
-  stepId:      string | null
-  stepTitle:   string | null
-  panelId:     string
-  tagIds:      string[] | null
-  contactId:   string | null
-  createdAt:   string
-  updatedAt:   string
-}
-
-export interface CardNote {
-  id:        string
-  cardId:    string
-  panelId:   string
-  userId:    string
-  text:      string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface MoveCardInput {
-  stepId?:      string
-  /** Sempre enviar a description atual completa — Helena substitui com vazio se omitida. */
-  description?: string
-  /** Helena faz MERGE de tags — nunca substitui. Passe só os IDs a adicionar. */
-  tagIds?:      string[]
-}
-
-// ─── CRM / Panel API (TASK-010) ───────────────────────────────────────────────
-
-export function listPanels(token: string): Promise<PaginatedResponse<Panel>> {
-  return helenaFetch(token, '/crm/v2/panel')
-}
-
-// IncludeDetails=Steps é o único parâmetro documentado/testado que faz a Helena
-// devolver as etapas do painel (id, title, position, cardCount). Sem ele, `steps`
-// vem sempre null — não existe endpoint dedicado de listagem de etapas.
-export function getPanel(id: string, token: string, includeSteps = false): Promise<Panel> {
-  const query = includeSteps ? '?IncludeDetails=Steps' : ''
-  return helenaFetch(token, `/crm/v1/panel/${id}${query}`)
-}
-
-export function listPanelCards(
-  panelId: string,
-  token: string,
-  page = 1,
-  pageSize = 100,
-): Promise<PaginatedResponse<PanelCard>> {
-  return helenaFetch(token, `/crm/v1/panel/card?PanelId=${panelId}&Page=${page}&PageSize=${pageSize}`)
-}
-
-export async function getCardByContact(
-  panelId: string,
-  contactId: string,
-  token: string,
-): Promise<PanelCard | null> {
-  const data: PaginatedResponse<PanelCard> = await helenaFetch(
-    token,
-    `/crm/v1/panel/card?PanelId=${panelId}&ContactId=${contactId}&PageSize=1`,
-  )
-  return data.items[0] ?? null
-}
-
-// fields[] indica à Helena quais campos atualizar — apenas os que foram passados.
-// PUT /crm/v2/panel/card/{id} retorna o card completo atualizado.
-export function moveCard(
-  cardId: string,
-  updates: MoveCardInput,
-  token: string,
-): Promise<PanelCard> {
-  const fields: string[] = []
-  if (updates.stepId !== undefined)      fields.push('StepId')
-  if (updates.description !== undefined) fields.push('Description')
-  if (updates.tagIds !== undefined)      fields.push('TagIds')
-
-  return helenaFetch(token, `/crm/v2/panel/card/${cardId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ fields, ...updates }),
-  })
-}
-
-export interface CreateCardInput {
-  contactId?: string | null
-  title?:     string | null
-  stepId?:    string
-}
-
-// ⚠️ Endpoint NÃO confirmado contra a API real da Helena (sem doc disponível
-// no repo — mesma situação que motivou o /api/dev/sync-check por tentativa).
-// Espelha a convenção de moveCard (PUT /crm/v2/panel/card/{id}); aqui é POST
-// na coleção, sem StepId por padrão (a Helena decide a etapa inicial do
-// painel; o move para a etapa certa vem depois, via outbox). CONFIRMAR COM
-// ANDRÉ antes de mergear esta task — ele é par obrigatório da TASK-022.
-export function createCard(
-  panelId: string,
-  input: CreateCardInput,
-  token: string,
-): Promise<PanelCard> {
-  return helenaFetch(token, '/crm/v2/panel/card', {
-    method: 'POST',
-    body: JSON.stringify({ panelId, ...input }),
-  })
-}
-
-export function getCardNotes(
-  cardId: string,
-  token: string,
-): Promise<PaginatedResponse<CardNote>> {
-  return helenaFetch(token, `/crm/v1/panel/card/${cardId}/note`)
-}
-
-export function createCardNote(
-  cardId: string,
-  text: string,
-  token: string,
-): Promise<CardNote> {
-  return helenaFetch(token, `/crm/v1/panel/card/${cardId}/note`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  })
-}
-
-export { helenaFetch }

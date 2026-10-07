@@ -36,7 +36,7 @@ export function useAuth(accountId: string, userId: string | null, urlToken?: str
   useEffect(() => {
     let cancelled = false
     // Defer com setTimeout — nunca setState síncrono no corpo do effect
-    // (regra react-hooks/set-state-in-effect; padrão do AgendaShell/TagLinkTable).
+    // (regra react-hooks/set-state-in-effect; padrão do AgendaShell).
     const t = setTimeout(async () => {
       // 1) Token vindo do sistema-pai via URL (fluxo white-label).
       if (urlToken) {

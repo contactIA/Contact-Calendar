@@ -10,7 +10,7 @@
 //   - cancelamentos vêm por cancelled_at/cancelled_reason
 //   - nome do profissional vem via dentist->user (dentist não tem name direto)
 //   - helena_lead_id fica null por ora (débito da TASK-050; a API por telefone
-//     não devolve o lead — resolução card<->lead é da TASK-014/022)
+//     não devolve o lead)
 // ============================================================================
 
 export interface Patient360Patient {
@@ -40,18 +40,6 @@ export interface Patient360TimelineItem {
   dentist_name:        string | null
 }
 
-// Card atual do paciente no espelho da Helena (null se não vinculado).
-export interface Patient360Card {
-  helena_card_id: string
-  step:           { name: string | null; position: number | null } | null
-  description:    string | null
-  unit_tag:       string | null
-  crc_tag:        string | null
-  origin_tag:     string | null
-  closed_value:   number | null
-  status:         string | null
-}
-
 export interface Patient360HelenaLink {
   contact_id: string | null
   lead_id:    string | null
@@ -62,6 +50,5 @@ export interface Patient360Payload {
   patient:     Patient360Patient
   timeline:    Patient360TimelineItem[]   // ordenada por start_at DESC
   last_visit:  Patient360TimelineItem | null  // consulta 'completed' mais recente
-  currentCard: Patient360Card | null
   helenaLink:  Patient360HelenaLink
 }

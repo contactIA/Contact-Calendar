@@ -13,10 +13,9 @@ import { normalizePhoneE164 } from '@/lib/patient/phone'
 //     numero exato). Nao produz "varios" — por isso o status 'ambiguous' existe
 //     no type como defesa futura, mas nenhum caminho o produz hoje (ADR-050-1).
 //   - helena_lead_id NAO e resolvido aqui: a API por telefone nao devolve o
-//     lead/card. Fica null; a resolucao lead<->card e da TASK-014/022 via
-//     getCardByContact (ADR-050-2). Debito documentado.
+//     lead/card. Fica null (ADR-050-2). Debito documentado.
 //   - Nunca sobrescreve um helena_contact_id existente com null (ADR-050-5).
-//   - Deps injetaveis para testabilidade (mesmo padrao do outboxWorker).
+//   - Deps injetaveis para testabilidade.
 // ============================================================================
 
 export type ResolveStatus = 'linked' | 'not_found' | 'ambiguous' | 'no_phone' | 'no_token' | 'error'

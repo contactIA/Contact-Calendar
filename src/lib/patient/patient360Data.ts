@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import type {
-  Patient360Payload, Patient360TimelineItem, Patient360Card,
+  Patient360Payload, Patient360TimelineItem,
 } from '@/types/patient360'
 
 // ============================================================================
@@ -9,7 +9,9 @@ import type {
 // patient360Data(patientId, accountId) reúne em UMA função:
 //   - cadastro do paciente (+ vínculo Helena)
 //   - timeline de consultas (ordenada por start_at DESC, com procedimento/profissional)
-//   - card atual no espelho Helena (+ etapa)
+//
+// O card do funil saiu daqui junto com o espelho do painel nativo: ele mora
+// no CRM e volta pela API do CRM quando a agenda for ligada a ele.
 //
 // SEGURANÇA: TODA query cruza account_id (do JWT, nunca do cliente) + patient_id.
 // Retorna null se o paciente não pertence à conta (evita IDOR).
@@ -70,29 +72,6 @@ export async function patient360Data(
   const timeline = (appts ?? []).map(mapTimelineItem)
   const last_visit = timeline.find((t: Patient360TimelineItem) => t.status === 'completed') ?? null
 
-  // 3. Card atual no espelho Helena (+ etapa). null se sem vínculo.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: card, error: cErr } = await (supabaseAdmin as any)
-    .from('helena_cards')
-    .select('helena_card_id, description, unit_tag, crc_tag, origin_tag, closed_value, status, step:helena_steps(name, position)')
-    .eq('patient_id', patientId)
-    .eq('account_id', accountId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (cErr) throw new Error(`Erro ao carregar card Helena: ${cErr.message}`)
-
-  const currentCard: Patient360Card | null = card ? {
-    helena_card_id: card.helena_card_id,
-    step:           card.step ? { name: card.step.name ?? null, position: card.step.position ?? null } : null,
-    description:    card.description ?? null,
-    unit_tag:       card.unit_tag ?? null,
-    crc_tag:        card.crc_tag ?? null,
-    origin_tag:     card.origin_tag ?? null,
-    closed_value:   card.closed_value ?? null,
-    status:         card.status ?? null,
-  } : null
-
   return {
     patient: {
       id:                patient.id,
@@ -106,7 +85,6 @@ export async function patient360Data(
     },
     timeline,
     last_visit,
-    currentCard,
     helenaLink: {
       contact_id: patient.helena_contact_id ?? null,
       lead_id:    patient.helena_lead_id ?? null,

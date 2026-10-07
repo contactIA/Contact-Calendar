@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/client'
-import { TagLinkTable } from '@/components/config/TagLinkTable'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Option   = { id: string; name: string }
 type Channel  = { id: string; name: string; phone: string }
-type PanelStep = { id: string; name: string }
 
 type IntegrationConfig = {
   helena_enabled:       boolean
@@ -21,22 +19,7 @@ type IntegrationConfig = {
   tag_scheduled:        string | null
   tag_completed:        string | null
   tag_no_show:          string | null
-  panel_id:             string | null
-  step_mappings:        Record<string, string>
 }
-
-// As 9 etapas do funil Helena — na ordem exata do GUIA-KANBAN-HELENA.md
-const FUNIL_STAGES = [
-  { key: 'lead',              label: 'Leads' },
-  { key: 'not_scheduled',     label: 'Não Agendado' },
-  { key: 'scheduled',         label: 'Agendados' },
-  { key: 'rescheduled',       label: 'Reagendado' },
-  { key: 'cancelled',         label: 'Cancelou' },
-  { key: 'no_show',           label: 'Faltou' },
-  { key: 'attended',          label: 'Comparecido' },
-  { key: 'attended_no_close', label: 'Compareceu e Não Fechou' },
-  { key: 'attended_closed',   label: 'Compareceu e Fechou' },
-]
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -92,13 +75,6 @@ export function HelenaIntegrationTab() {
   const [leadHours, setLeadHours]       = useState(24)
   const [syncContacts, setSyncContacts] = useState(true)
 
-  // Painel + mapeamento de etapas
-  const [panelId, setPanelId]               = useState('')
-  const [stepMappings, setStepMappings]     = useState<Record<string, string>>({})
-  const [panels, setPanels]                 = useState<Option[]>([])
-  const [panelSteps, setPanelSteps]         = useState<PanelStep[]>([])
-  const [stepsLoading, setStepsLoading]     = useState(false)
-
   // Listas Helena (pós-conexão)
   const [channels, setChannels]     = useState<Channel[]>([])
   const [tags, setTags]             = useState<Option[]>([])
@@ -112,37 +88,23 @@ export function HelenaIntegrationTab() {
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
 
-  // Carrega listas Helena (canais, etiquetas, templates) + painéis
+  // Carrega listas Helena (canais, etiquetas, templates)
   const loadLists = useCallback(async () => {
     setListLoading(true); setListError('')
     try {
-      const [ch, tg, tp, pn] = await Promise.all([
+      const [ch, tg, tp] = await Promise.all([
         api.get<{ data: Channel[] }>('/api/admin/integrations/channels'),
         api.get<{ data: Option[] }>('/api/admin/integrations/tags'),
         api.get<{ data: Option[] }>('/api/admin/integrations/templates'),
-        api.get<{ data: Option[] }>('/api/admin/integrations/helena/panels'),
       ])
       setChannels(ch.data ?? [])
       setTags(tg.data ?? [])
       setTemplates(tp.data ?? [])
-      setPanels(pn.data ?? [])
       setConnected(true)
     } catch (e) {
       setConnected(false)
       setListError(e instanceof Error ? e.message : 'Não consegui conectar na Helena')
     } finally { setListLoading(false) }
-  }, [])
-
-  // Carrega etapas do painel selecionado
-  const loadSteps = useCallback(async (pid: string) => {
-    if (!pid) { setPanelSteps([]); return }
-    setStepsLoading(true)
-    try {
-      const res = await api.get<{ data: PanelStep[] }>(`/api/admin/integrations/helena/steps?panelId=${pid}`)
-      setPanelSteps(res.data ?? [])
-    } catch {
-      setPanelSteps([])
-    } finally { setStepsLoading(false) }
   }, [])
 
   // Carrega config salva no banco
@@ -160,23 +122,11 @@ export function HelenaIntegrationTab() {
       setReminderTpl(c.reminder_template_id ?? '')
       setLeadHours(c.reminder_lead_hours ?? 24)
       setSyncContacts(c.sync_contacts)
-      setPanelId(c.panel_id ?? '')
-      setStepMappings(c.step_mappings ?? {})
-      if (c.helena_token_set) {
-        await loadLists()
-        if (c.panel_id) await loadSteps(c.panel_id)
-      }
+      if (c.helena_token_set) await loadLists()
     } catch {} finally { setLoading(false) }
-  }, [loadLists, loadSteps])
+  }, [loadLists])
 
   useEffect(() => { load() }, [load])
-
-  // Ao mudar painel: carrega etapas e limpa mapeamentos antigos
-  async function handlePanelChange(pid: string) {
-    setPanelId(pid)
-    setStepMappings({})
-    await loadSteps(pid)
-  }
 
   // Salva token e conecta
   async function connect() {
@@ -193,7 +143,7 @@ export function HelenaIntegrationTab() {
     }
   }
 
-  // Salva toda a configuração incluindo panel_id e step_mappings
+  // Salva toda a configuração
   async function save() {
     setSaving(true); setError(''); setSaved(false)
     try {
@@ -207,8 +157,6 @@ export function HelenaIntegrationTab() {
         tag_scheduled:        tagScheduled || null,
         tag_completed:        tagCompleted || null,
         tag_no_show:          tagNoShow || null,
-        panel_id:             panelId || null,
-        step_mappings:        stepMappings,
       }
       if (tokenInput.trim()) payload.helena_token = tokenInput.trim()
       await api.put('/api/admin/integrations', payload)
@@ -266,7 +214,7 @@ export function HelenaIntegrationTab() {
 
         {!connected && (
           <p className="text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-4">
-            Cole o token e clique em <strong>Conectar</strong> para carregar canais, etiquetas, templates e painéis da sua conta Helena.
+            Cole o token e clique em <strong>Conectar</strong> para carregar canais, etiquetas e templates da sua conta Helena.
           </p>
         )}
 
@@ -305,84 +253,6 @@ export function HelenaIntegrationTab() {
               <Field label="Antecedência do lembrete (horas)">
                 <input type="number" min={0} max={720} className={inputCls} value={leadHours} onChange={e => setLeadHours(Number(e.target.value))} />
               </Field>
-            </div>
-
-            {/* Painel CRM + mapeamento das 9 etapas */}
-            <div className="border-t border-gray-100 pt-4 space-y-4">
-              <div>
-                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Kanban CRM</p>
-                <Field label="Painel Helena">
-                  <OptionSelect
-                    value={panelId}
-                    onChange={handlePanelChange}
-                    options={panels}
-                    emptyLabel="— selecione o painel —"
-                  />
-                </Field>
-              </div>
-
-              {panelId && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-2">
-                    Mapeamento das etapas do funil → etapas do painel Helena
-                  </p>
-                  <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
-                    Para cada status do seu sistema, escolha a etapa correspondente no painel Helena selecionado.
-                  </p>
-
-                  {stepsLoading ? (
-                    <p className="text-[11px] text-gray-400">Carregando etapas do painel...</p>
-                  ) : panelSteps.length === 0 ? (
-                    <p className="text-[11px] text-amber-600">Não foi possível carregar as etapas deste painel.</p>
-                  ) : (
-                    <div className="rounded-xl border border-gray-100 overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-1/2">
-                              Status no sistema
-                            </th>
-                            <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-1/2">
-                              Etapa na Helena
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {FUNIL_STAGES.map((stage, i) => (
-                            <tr key={stage.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                              <td className="px-4 py-2.5 text-gray-700 font-medium text-xs">
-                                {stage.label}
-                              </td>
-                              <td className="px-4 py-2.5">
-                                <select
-                                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-border bg-white"
-                                  value={stepMappings[stage.key] ?? ''}
-                                  onChange={e =>
-                                    setStepMappings(prev => ({
-                                      ...prev,
-                                      [stage.key]: e.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">— não mapear —</option>
-                                  {panelSteps.map(s => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
-                                  ))}
-                                </select>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Vínculo de tags (UUID ↔ significado) */}
-            <div className="border-t border-gray-100 pt-4">
-              <TagLinkTable />
             </div>
           </>
         )}
