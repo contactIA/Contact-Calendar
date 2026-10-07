@@ -12,7 +12,7 @@ incremental sem convivência com dados vivos.
 | 0 | Limpeza: sai a camada do painel nativo e o código morto | feita |
 | 1 | Decisão e plano (ADR 0001 e este documento) | feita |
 | 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | feita |
-| 3 | Esquema `agenda`: o [modelo de dados](modelo-de-dados.md) aprovado antes (proposta de 2026-10-07, esperando a equipe), a migração base e os testes de banco (sobreposição por profissional, cadeira e paciente, mesma clínica nas chaves) | médio |
+| 3 | Esquema `agenda`: o [modelo de dados](modelo-de-dados.md) aprovado, as migrações `0000` e `0001` (não aplicadas) e os testes de banco (sobreposição por profissional, cadeira e paciente, mesma clínica nas chaves) | feita |
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | grande |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs` | médio |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova | grande |

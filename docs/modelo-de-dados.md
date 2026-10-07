@@ -1,13 +1,18 @@
 # Modelo de dados
 
-- **Status:** proposta de 2026-10-07, esperando a aprovação da equipe. As decisões
-  em aberto estão no fim, em "Para a equipe decidir".
-- **Onde vai morar:** `src/infra/banco/esquema.ts` e as migrações em `drizzle/`, no
+- **Status:** aprovado em 2026-10-07, com as cinco decisões do fim como foram
+  recomendadas. As migrações estão no código e **não foram aplicadas** em nenhum
+  banco de verdade: a aplicação no projeto do CRM fica para o corte (fase 9), com o
+  OK da equipe.
+- **Onde está:** `src/infra/banco/esquema.ts` e as migrações em `drizzle/`, para o
   esquema `agenda` do Postgres do projeto do CRM ("Clinic Control")
   ([ADR 0001](adr/0001-app-proprio-com-a-arquitetura-do-crm.md)). O controle do que
   já rodou fica em `agenda.__drizzle_migrations`.
-- **Testes:** `testes/banco/` aplica as migrações num Postgres dentro do processo
-  (PGlite) e tenta quebrar cada regra desta página.
+  - `0000_esquema_agenda`: gerada pelo Drizzle (tabelas, chaves, `check`, RLS).
+  - `0001_regras_de_horario`: escrita à mão, com o que o Drizzle não descreve (as
+    extensões, as restrições de exclusão e o gatilho do histórico).
+- **Testes:** `testes/banco/migracoes.test.ts` aplica as migrações num Postgres
+  dentro do processo (PGlite) e tenta quebrar cada regra desta página.
 
 ## Como este modelo foi feito
 
@@ -187,8 +192,8 @@ todo dia se faz partindo o expediente.
 **`pacientes`**: nome, telefone em E.164 (como no CRM, com o nono dígito no celular
 antigo), e-mail, nascimento e observações. `contato_plataforma_id` guarda o contato
 na plataforma, quando achado. Índice por `(clinica_id, telefone)`; a busca pelo nome
-ignora acento, numa consulta dedicada. O telefone pode ou não repetir na clínica:
-decisão **D1**.
+ignora acento, numa consulta dedicada. O telefone pode repetir na clínica, porque a
+família usa o mesmo número (decisão **D1**).
 
 **`consultas`**:
 
@@ -271,9 +276,11 @@ com novas tentativas. Se a consulta foi gravada, o aviso sai.
 | `helena_*`, `step_mappings`, `tag_links`, `sync_outbox`, `sync_log`, `webhook_events` | **saem**: o card mora no CRM, e a entrega vira `caixa_de_saida` |
 | (não havia) | `especialidades`, `eventos`, `caixa_de_saida` |
 
-## Para a equipe decidir
+## Decisões da equipe (2026-10-07)
 
-| | Pergunta | Recomendação |
+Aprovadas como recomendadas.
+
+| | Pergunta | Decisão |
 |---|---|---|
 | **D1** | O telefone do paciente é único na clínica (como hoje), ou vários pacientes podem ter o mesmo número? | **Vários.** A mãe marca para o filho com o número dela, e hoje isso grava a consulta no cadastro da mãe. Com vários, o agente confere pelo nome e pergunta quando houver dúvida. |
 | **D2** | Especialidades numa lista da clínica, ou texto livre como hoje? | **Lista.** O filtro "o procedimento exige especialidade" depende do texto bater igual. |
