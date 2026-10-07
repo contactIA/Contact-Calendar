@@ -12,13 +12,13 @@ incremental sem convivência com dados vivos.
 | 0 | Limpeza: sai a camada do painel nativo e o código morto | feita |
 | 1 | Decisão e plano (ADR 0001 e este documento) | feita |
 | 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | feita |
-| 3 | Esquema `agenda`: migração base tirada do banco real, testes de banco (sobreposição por profissional e por cadeira, telefone repetido, mesma clínica nas chaves) | médio |
+| 3 | Esquema `agenda`: o modelo de dados aprovado antes num documento, a migração base e os testes de banco (sobreposição por profissional e por cadeira, telefone repetido, mesma clínica nas chaves) | médio |
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | grande |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs` | médio |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova | grande |
-| 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só | médio |
-| 8 | Acesso e deploy: login pelo item de menu, domínio próprio na VPS, item de menu na plataforma | médio |
-| 9 | Corte: recriar as clínicas reais, desligar a Vercel, pausar o Supabase antigo | pequeno |
+| 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete | médio |
+| 8 | Acesso e deploy: login pelo item de menu, o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
+| 9 | Corte e documentação: recriar as clínicas reais, desligar a Vercel, pausar o Supabase antigo e publicar a documentação da API no ReadMe | pequeno |
 
 ## Regras da migração
 
@@ -45,11 +45,44 @@ incremental sem convivência com dados vivos.
    nasce vazio, sem migrar dados.
 3. **A API segue o padrão do CRM** (`/api/v1/...`, campos em camelCase, erros
    `{ erro, codigo }`), inclusive a do agente. A documentação vai para o ReadMe,
-   como a do CRM: o CI envia o contrato a cada push na `master`.
-4. **O domínio é `agenda.contactia.com.br`.** O registro ainda não existe.
+   no mesmo projeto da do CRM, como parte final da migração (fase 9). O que falta
+   para publicar está na seção "ReadMe", abaixo.
+4. **O domínio é `agenda.contactia.com.br`.** Ver a seção "Domínio", abaixo.
 5. **O lembrete da consulta tem dois caminhos, sincronizados.** A clínica pode
    escolher na agenda ou no CRM por onde o lembrete sai, e a escolha feita num
    aparece igual no outro. Uma consulta nunca recebe dois lembretes. Proposta: a
    escolha fica guardada num lugar só (o CRM), e a tela da agenda lê e grava pela
    API do CRM. Hoje a configuração do gestor no CRM é só da tela, então o CRM
-   precisa de uma rota para a chave da integração.
+   precisa de uma rota para a chave da integração. Aprovado.
+
+## Domínio (conferido em 2026-10-07)
+
+- O DNS do `contactia.com.br` fica na hospedagem do site (nameservers
+  `ns1/ns2.brasil126-5173.com.br`), o mesmo lugar onde foi criado o registro do
+  CRM (`crm.contactia.com.br` → `179.197.235.183`, a VPS da Hostinger).
+- **`agenda.contactia.com.br` já existe:** é um CNAME para
+  `manager01.contactia.com.br` (`178.156.203.95`, um servidor na Hetzner, o mesmo
+  de `api.contactia.com.br`). Lá responde um Traefik, com o certificado padrão
+  dele e 404, porque o app ainda não foi criado no TurboCloud. Quando o app for
+  criado lá com esse domínio, o Traefik emite o certificado, e o DNS não precisa
+  mudar.
+- **Em aberto (fase 8):** a agenda roda no TurboCloud (`manager01`, onde o DNS já
+  aponta) ou na VPS do CRM? Na VPS, o registro vira um **A** para
+  `179.197.235.183` e o nginx e o certificado seguem o passo a passo do CRM. A
+  ADR 0001 pressupôs a VPS; se for o TurboCloud, ela ganha uma revisão.
+
+## ReadMe (fase 9)
+
+A documentação da API da agenda vai para o mesmo projeto do ReadMe do CRM
+(`contactiacrm.readme.io`), como uma segunda API. O código já está pronto
+(`npm run docs:readme` e o passo do CI, com o identificador `agenda.json`); falta:
+
+- [ ] Conferir se o plano do ReadMe aceita uma segunda API no mesmo projeto. Se
+      não aceitar, criar um projeto só da agenda e trocar a origem do CORS em
+      `src/api/app.ts`.
+- [ ] Cadastrar o segredo `README_API_KEY` no repositório Contact-Calendar, como
+      no do CRM. Quem cadastra é a equipe.
+- [ ] Com a API no ar em `agenda.contactia.com.br`, fazer o primeiro envio pelo CI
+      da `master` e conferir o "Try It" (CORS e endereço de produção).
+- [ ] Ligar as duas documentações: um link da do CRM para a da agenda e o
+      contrário.
