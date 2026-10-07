@@ -179,7 +179,7 @@ horário reservado).
 | Coluna | Observação |
 |---|---|
 | `profissional_id` | |
-| `unidade_id` | vazia: vale para todas as unidades |
+| `unidade_id` | onde, só para mostrar; o bloqueio tira o profissional de todas as unidades, como na agenda antiga |
 | `inicio`, `fim` | instantes, com fuso |
 | `tipo` | `ausencia`, `intervalo`, `reuniao` ou `reservado` |
 | `motivo`, `criado_por_id` | |

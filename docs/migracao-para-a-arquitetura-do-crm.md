@@ -13,8 +13,8 @@ incremental sem convivência com dados vivos.
 | 1 | Decisão e plano (ADR 0001 e este documento) | feita |
 | 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | feita |
 | 3 | Esquema `agenda`: o [modelo de dados](modelo-de-dados.md) aprovado, as migrações `0000` e `0001` (não aplicadas) e os testes de banco (sobreposição por profissional, cadeira e paciente, mesma clínica nas chaves) | feita |
-| 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | grande |
-| 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs` | médio |
+| 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | feita |
+| 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | médio |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova | grande |
 | 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete | médio |
 | 8 | Acesso e deploy: login pelo item de menu, o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
@@ -35,6 +35,35 @@ incremental sem convivência com dados vivos.
   comportamento, não um porte.
 - **Enquanto a migração não termina**, o código novo fica num ramo. A `master`
   publica na Vercel a cada push.
+
+## Decidido na construção (fase 4, a confirmar com a equipe)
+
+Regras que a agenda antiga não tinha, ou tinha diferente, e que entraram em
+`src/modulos/agenda`. Cada uma tem teste; mudar qualquer uma é mudar um lugar só.
+
+1. **A chave do agente de IA e das integrações confirma e cancela.** A antiga só
+   deixava cancelar; confirmar serve ao paciente que responde ao lembrete pelo
+   WhatsApp. Faltas e chegadas continuam com a recepção.
+2. **A recomendação de profissional considera quem tem menos consultas no dia**,
+   depois de quem já atendeu o paciente e antes da prioridade. O README antigo
+   prometia isso, mas o código não fazia.
+3. **A chave só marca no futuro e dentro do expediente.** A recepção pode
+   encaixar fora do expediente e registrar no passado.
+4. **Nada de horário livre no passado.** A antiga oferecia os horários de hoje
+   que já tinham passado.
+5. **Remarcar só a consulta agendada ou confirmada**, e ela volta para agendada
+   (a confirmação vale para o horário antigo). A cancelada e a falta não se
+   remarcam: marca-se outra, o que no CRM é o "reagendou".
+6. **O CRM fica sabendo que o paciente compareceu uma vez só:** quando ele chega
+   (em atendimento) ou quando a consulta é concluída direto.
+7. **O dentista vê a agenda dele** e só marca chegada e atendimento das consultas
+   dele; a de outro dentista é tratada como inexistente.
+8. **O bloqueio tira o profissional de todas as unidades**, como na antiga; a
+   unidade do bloqueio é só para mostrar.
+9. **Cadastrar de novo o mesmo nome no mesmo telefone é recusado.** Outro nome no
+   mesmo telefone é outra pessoa da família.
+10. **Paciente sem telefone não gera aviso** ao CRM nem à plataforma: os dois
+    precisam do número.
 
 ## Decidido com a equipe (2026-10-07)
 
