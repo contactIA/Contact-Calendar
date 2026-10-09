@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { atorDo, cuidaDaAgenda, exigirQueCuidaDaAgenda, profissionalVisivel, unidadesVisiveis, type Acesso, type Papeis } from './acesso'
+import { atorDo, cuidaDaAgenda, exigirGestor, exigirQueCuidaDaAgenda, profissionalVisivel, unidadesVisiveis, type Acesso, type Papeis } from './acesso'
 
 const usuario = (papeis: Partial<Papeis>, extra: { profissionalId?: string | null; unidades?: string[] } = {}): Acesso => ({
   tipo: 'usuario',
@@ -37,5 +37,13 @@ describe('acesso', () => {
     expect(unidadesVisiveis(usuario({ recepcao: true }, { unidades: ['a'] }))).toEqual(['a'])
     expect(unidadesVisiveis(usuario({ gestor: true }, { unidades: ['a'] }))).toBeNull()
     expect(unidadesVisiveis(usuario({ recepcao: true }))).toBeNull()
+  })
+
+  it('os cadastros são só do gestor, nem a chave que grava mexe neles', () => {
+    expect(() => exigirGestor(usuario({ gestor: true }))).not.toThrow()
+    expect(() => exigirGestor(usuario({ recepcao: true }))).toThrow(expect.objectContaining({ codigo: 'SO_GESTOR' }))
+    expect(() => exigirGestor({ tipo: 'integracao', clinicaId: 'c', chaveId: 'k', nome: 'n8n', podeEscrever: true })).toThrow(
+      expect.objectContaining({ codigo: 'SO_GESTOR' })
+    )
   })
 })

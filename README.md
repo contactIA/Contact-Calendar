@@ -3,8 +3,8 @@
 Agenda odontológica white label, multi clínica, com API para o agente de IA.
 
 A recepção, os dentistas e o gestor usam a interface; o agente de IA do
-WhatsApp usa os endpoints `/api/agent/*`. Os dois passam pelas mesmas regras e
-enxergam os mesmos horários livres.
+WhatsApp usa as rotas `/api/v1/agente/*`. Os dois passam pelas mesmas regras e
+enxergam os mesmos horários livres. A documentação da API fica em `/api/docs`.
 
 > **Em migração para a arquitetura do CRM ContactIA**, como app próprio ligado ao
 > CRM pela API ([ADR 0001](docs/adr/0001-app-proprio-com-a-arquitetura-do-crm.md),
@@ -51,8 +51,7 @@ flowchart TD
 | Quem | Como entra | Validade |
 |---|---|---|
 | Recepção, dentista, gestor (`admin`) | A plataforma abre `/{accountId}?token=...`. O token é emitido por `POST /api/auth/url`, que exige o segredo `WHITELABEL_AUTH_SECRET` e por isso só é chamado do lado do servidor | 8 horas |
-| Agente de IA (habilidades) | `Authorization: Bearer <chave>` + `X-Account-ID` em cada pedido | Até a chave ser revogada |
-| Agente de IA (API geral) | `POST /api/auth/ai` com a chave devolve um JWT | 60 minutos |
+| Agente de IA e integrações | `Authorization: Bearer agd_...` na API nova (`/api/v1`), com a chave da tabela `agenda.chaves_api` | Até a chave ser revogada |
 
 - As chaves da IA ficam com hash bcrypt; o texto nunca é gravado.
 - O token da plataforma de cada clínica fica cifrado (AES-256-GCM,
@@ -74,39 +73,41 @@ flowchart TD
 | Marcar falta (`no_show`) | sim | sim | não | não |
 | Configurações e chaves | sim | não | não | não |
 
-## Habilidades do agente (`/api/agent/*`)
+## Habilidades do agente (`/api/v1/agente/*`)
 
-Cada habilidade é uma chamada só: a rota acha o paciente pelo telefone, ordena
-os dentistas e escolhe a cadeira.
+Cada habilidade é uma chamada só: a rota acha o paciente pelo telefone (o nome
+desempata a família que usa o mesmo número), ordena os profissionais e escolhe a
+cadeira. A chave vai em `Authorization: Bearer agd_...`; os campos são em
+camelCase, como na API do CRM.
 
 | Rota | O que faz |
 |---|---|
-| `POST /api/agent/disponibilidade` | Horários livres do dia, com o dentista recomendado e alternativas. Pede `data`, `unit_id`, `procedure_id`; aceita `telefone` e `quantidade_dentistas` |
-| `POST /api/agent/agendar` | Acha ou cria o paciente pelo telefone e cria a consulta. Sem `chair_id`, usa a primeira cadeira livre |
-| `POST /api/agent/cancelar` | Cancela a consulta informada ou a próxima do paciente |
-| `POST /api/agent/remarcar` | Remarca; se a cadeira original estiver ocupada, procura outra livre na unidade |
-| `POST /api/agent/consultar` | A próxima consulta do paciente |
+| `GET /api/v1/agente/disponibilidade` | O profissional recomendado e as alternativas, com os horários do dia. Pede `unidadeId`, `procedimentoId` e `data`; aceita `telefone`, `nome` e `quantos` |
+| `POST /api/v1/agente/agendar` | Acha ou cadastra o paciente pelo telefone e marca. Sem `cadeiraId`, usa a primeira cadeira livre |
+| `POST /api/v1/agente/remarcar` | Remarca a consulta informada (`consultaId`) ou a próxima do paciente |
+| `POST /api/v1/agente/confirmar` | Confirma a consulta informada ou a próxima (o paciente respondeu ao lembrete) |
+| `POST /api/v1/agente/cancelar` | Cancela a consulta informada ou a próxima |
+| `GET /api/v1/agente/consulta` | A próxima consulta do paciente |
 
 Exemplo:
 
 ```json
-// POST /api/agent/agendar
+// POST /api/v1/agente/agendar
 {
   "telefone": "5511999887766",
-  "nome_paciente": "João Silva",
-  "dentista_id": "uuid",
-  "horario": "2026-05-20T14:00:00Z",
-  "procedure_id": "uuid",
-  "unit_id": "uuid"
+  "nome": "João Silva",
+  "unidadeId": "uuid",
+  "profissionalId": "uuid",
+  "procedimentoId": "uuid",
+  "inicio": "2026-10-20T14:00:00-03:00"
 }
 
-// 201
-{ "confirmado": true, "agendamento_id": "uuid", "resumo": "Limpeza com Dr. Carlos em 20/05 às 14h" }
+// 201: a consulta, no mesmo formato de GET /api/v1/consultas/{id}
 ```
 
-- Horário já ocupado: **409** (a restrição do banco devolve `23P01`).
-- Telefone que bate com mais de um paciente: **409** (em `disponibilidade`, só
-  ignora o histórico).
+- Horário já ocupado ou fora do expediente: **409**, com o `codigo`.
+- Telefone que bate com mais de um paciente: **409** `PACIENTE_AMBIGUO`, com os
+  nomes; o agente pergunta e manda de novo com o `nome`.
 
 ### Prioridade dos dentistas
 
@@ -249,17 +250,16 @@ src/
 │   ├── [accountId]/         agenda, pacientes, configuracoes (o layout faz o login)
 │   ├── onboarding/          cadastro público de clínica
 │   └── api/
-│       ├── agent/           habilidades do agente de IA
 │       ├── appointments/    consultas, status, conflitos
 │       ├── patients/        pacientes, Paciente 360, vínculo com o contato
 │       ├── admin/           cadastros da clínica, integração, chaves
-│       ├── auth/            login pela plataforma e do agente
+│       ├── auth/            login pela plataforma
 │       ├── helena/          abrir e transferir conversa
 │       └── ...              slots, dentists, units, procedures, schedule-blocks
 ├── components/
 │   ├── agenda/              AgendaShell, visões, modais, popover, relatório do dia
 │   └── config/              aba de integração
 ├── hooks/                   dados da agenda e login
-├── lib/                     auth, api (withAuth), agentAuth, helena (cliente da plataforma), supabase, tz
+├── lib/                     auth, api (withAuth), helena (cliente da plataforma), supabase, tz
 └── types/                   database.ts (gerado), patient360.ts
 ```

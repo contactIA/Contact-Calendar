@@ -92,6 +92,11 @@ export function leiturasDaAgendaPostgres(db: Banco): LeiturasDaAgenda {
         .limit(limite)
     },
 
+    async consulta(clinicaId, consultaId) {
+      const [linha] = await consultasCom(db, and(eq(consultas.clinica_id, clinicaId), eq(consultas.id, consultaId)))
+      return linha ? paraConsultaNaAgenda(linha) : null
+    },
+
     async consultasDoPaciente(clinicaId, pacienteId) {
       const linhas = await consultasCom(db, and(eq(consultas.clinica_id, clinicaId), eq(consultas.paciente_id, pacienteId))).orderBy(desc(consultas.inicio))
       return linhas.map(paraConsultaNaAgenda)

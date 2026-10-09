@@ -73,6 +73,14 @@ export interface PedidoDeRemarcacao {
   versao?: number
 }
 
+/** A consulta pelo telefone do paciente, como o agente pede; o nome desempata a família. */
+export interface ConsultaDoTelefone {
+  telefone: string
+  nome?: string | null
+  /** Vazio: a próxima consulta marcada do paciente. */
+  consultaId?: string
+}
+
 export interface PedidoDeHorarios {
   unidadeId: string
   procedimentoId: string
@@ -275,6 +283,25 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     return doTelefone.find((p) => p.id === escolha.id)!
   }
 
+  /**
+   * A consulta que o agente quer mexer, travada: a pedida pelo id, se for do
+   * paciente do telefone, ou a próxima marcada dele. A de outro paciente é
+   * tratada como inexistente.
+   */
+  async function consultaMarcadaDoTelefone(r: Repositorios, acesso: Acesso, pedido: ConsultaDoTelefone): Promise<Consulta> {
+    const paciente = await pacienteDoTelefone(r, acesso.clinicaId, pedido.telefone, pedido.nome)
+    if (pedido.consultaId) {
+      const consulta = await consultaVisivel(r, acesso, pedido.consultaId)
+      if (consulta.pacienteId !== paciente.id) throw new ErroDeDominio('nao_encontrado', 'CONSULTA_NAO_ENCONTRADA', 'Consulta não encontrada')
+      return consulta
+    }
+    const proxima = await r.consultas.proximaDosPacientes(acesso.clinicaId, [paciente.id], relogio.agora())
+    if (!proxima || !veUnidade(acesso, proxima.unidadeId)) {
+      throw new ErroDeDominio('nao_encontrado', 'SEM_CONSULTA_MARCADA', `${paciente.nome} não tem consulta marcada`)
+    }
+    return consultaVisivel(r, acesso, proxima.id)
+  }
+
   // ── Horários ───────────────────────────────────────────────────────────────
 
   async function calcularHorarios(r: Repositorios, acesso: Acesso, pedido: PedidoDeHorarios) {
@@ -336,6 +363,58 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
       const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
       await r.caixa.enfileirar(avisosConfigurados(avisos, clinica, gravada, paciente, await contextoDosAvisos(r, acesso, gravada)))
     }
+    return gravada
+  }
+
+  async function gravarRemarcacao(r: Repositorios, acesso: Acesso, consulta: Consulta, pedido: Omit<PedidoDeRemarcacao, 'versao'>) {
+    const agora = relogio.agora()
+    const clinica = await clinicaDe(r, acesso)
+    exigirRemarcavel(consulta)
+    const unidade = await unidadeAtiva(r, acesso, consulta.unidadeId)
+    const procedimento = (await r.estrutura.procedimento(clinica.id, consulta.procedimentoId))!
+    const profissional = await profissionalQueFaz(r, acesso, unidade, procedimento, pedido.profissionalId ?? consulta.profissionalId)
+    const duracao = pedido.duracaoMinutos ?? Math.round((consulta.fim.getTime() - consulta.inicio.getTime()) / MINUTO)
+    duracaoDe(duracao, procedimento)
+    const janela = { inicio: pedido.inicio, fim: new Date(pedido.inicio.getTime() + duracao * MINUTO) }
+
+    const data = diaNoFuso(janela.inicio, clinica.fusoHorario)
+    const expedientes = await r.estrutura.expedientes(clinica.id, unidade.id, diaDaSemana(data), [profissional.id])
+    const [ocupacoes, doPaciente, cadeiras] = await Promise.all([
+      r.ocupacoes.dosProfissionais(clinica.id, [profissional.id], janela, consulta.id),
+      r.ocupacoes.doPaciente(clinica.id, consulta.pacienteId, janela, consulta.id),
+      cadeirasComOcupacoes(r, acesso, unidade.id, janela, consulta.id),
+    ])
+    const cadeiraId = conferirHorario({
+      janela,
+      expediente: janelasDoExpediente(data, clinica.fusoHorario, expedientes),
+      podeEncaixar: !ehChave(acesso),
+      agora,
+      ocupacoesDoProfissional: ocupacoes.get(profissional.id) ?? [],
+      ocupacoesDoPaciente: doPaciente,
+      cadeiras,
+      cadeiraPreferida: pedido.cadeiraId ?? consulta.cadeiraId,
+      cadeiraObrigatoria: Boolean(pedido.cadeiraId),
+    })
+
+    const gravada = await r.consultas.atualizar({ ...consulta, inicio: janela.inicio, fim: janela.fim, profissionalId: profissional.id, cadeiraId, status: 'agendada' })
+    await r.historico.registrar([
+      {
+        clinicaId: clinica.id,
+        consultaId: consulta.id,
+        pacienteId: consulta.pacienteId,
+        tipo: 'consulta_remarcada',
+        dados: {
+          de: { inicio: consulta.inicio.toISOString(), fim: consulta.fim.toISOString(), profissionalId: consulta.profissionalId, cadeiraId: consulta.cadeiraId, status: consulta.status },
+          para: { inicio: gravada.inicio.toISOString(), fim: gravada.fim.toISOString(), profissionalId: gravada.profissionalId, cadeiraId: gravada.cadeiraId },
+        },
+        ator: atorDo(acesso),
+        ocorridoEm: agora,
+      },
+    ])
+    const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
+    await r.caixa.enfileirar(
+      avisosConfigurados(avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome })
+    )
     return gravada
   }
 
@@ -459,58 +538,13 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     /** Muda o horário (e, se pedir, o profissional ou a cadeira) da consulta marcada. Volta para "agendada". */
     async remarcar(acesso: Acesso, consultaId: string, pedido: PedidoDeRemarcacao) {
       exigirQueCuidaDaAgenda(acesso)
-      return uow.executar(async (r) => {
-        const agora = relogio.agora()
-        const clinica = await clinicaDe(r, acesso)
-        const consulta = await consultaVisivel(r, acesso, consultaId, pedido.versao)
-        exigirRemarcavel(consulta)
-        const unidade = await unidadeAtiva(r, acesso, consulta.unidadeId)
-        const procedimento = (await r.estrutura.procedimento(clinica.id, consulta.procedimentoId))!
-        const profissional = await profissionalQueFaz(r, acesso, unidade, procedimento, pedido.profissionalId ?? consulta.profissionalId)
-        const duracao = pedido.duracaoMinutos ?? Math.round((consulta.fim.getTime() - consulta.inicio.getTime()) / MINUTO)
-        duracaoDe(duracao, procedimento)
-        const janela = { inicio: pedido.inicio, fim: new Date(pedido.inicio.getTime() + duracao * MINUTO) }
+      return uow.executar(async (r) => gravarRemarcacao(r, acesso, await consultaVisivel(r, acesso, consultaId, pedido.versao), pedido))
+    },
 
-        const data = diaNoFuso(janela.inicio, clinica.fusoHorario)
-        const expedientes = await r.estrutura.expedientes(clinica.id, unidade.id, diaDaSemana(data), [profissional.id])
-        const [ocupacoes, doPaciente, cadeiras] = await Promise.all([
-          r.ocupacoes.dosProfissionais(clinica.id, [profissional.id], janela, consulta.id),
-          r.ocupacoes.doPaciente(clinica.id, consulta.pacienteId, janela, consulta.id),
-          cadeirasComOcupacoes(r, acesso, unidade.id, janela, consulta.id),
-        ])
-        const cadeiraId = conferirHorario({
-          janela,
-          expediente: janelasDoExpediente(data, clinica.fusoHorario, expedientes),
-          podeEncaixar: !ehChave(acesso),
-          agora,
-          ocupacoesDoProfissional: ocupacoes.get(profissional.id) ?? [],
-          ocupacoesDoPaciente: doPaciente,
-          cadeiras,
-          cadeiraPreferida: pedido.cadeiraId ?? consulta.cadeiraId,
-          cadeiraObrigatoria: Boolean(pedido.cadeiraId),
-        })
-
-        const gravada = await r.consultas.atualizar({ ...consulta, inicio: janela.inicio, fim: janela.fim, profissionalId: profissional.id, cadeiraId, status: 'agendada' })
-        await r.historico.registrar([
-          {
-            clinicaId: clinica.id,
-            consultaId: consulta.id,
-            pacienteId: consulta.pacienteId,
-            tipo: 'consulta_remarcada',
-            dados: {
-              de: { inicio: consulta.inicio.toISOString(), fim: consulta.fim.toISOString(), profissionalId: consulta.profissionalId, cadeiraId: consulta.cadeiraId, status: consulta.status },
-              para: { inicio: gravada.inicio.toISOString(), fim: gravada.fim.toISOString(), profissionalId: gravada.profissionalId, cadeiraId: gravada.cadeiraId },
-            },
-            ator: atorDo(acesso),
-            ocorridoEm: agora,
-          },
-        ])
-        const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
-        await r.caixa.enfileirar(
-          avisosConfigurados(avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome })
-        )
-        return gravada
-      })
+    /** Para o agente: remarca a consulta do paciente do telefone; sem `consultaId`, a próxima marcada. */
+    async remarcarDoPaciente(acesso: Acesso, pedido: ConsultaDoTelefone & Omit<PedidoDeRemarcacao, 'versao'>) {
+      exigirQueCuidaDaAgenda(acesso)
+      return uow.executar(async (r) => gravarRemarcacao(r, acesso, await consultaMarcadaDoTelefone(r, acesso, pedido), pedido))
     },
 
     async mudarStatus(acesso: Acesso, consultaId: string, pedido: { status: StatusDaConsulta; motivo?: string | null; versao?: number }) {
@@ -521,18 +555,26 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
       })
     },
 
-    /** Para o agente: cancela a próxima consulta marcada do paciente do telefone. */
-    async cancelarProxima(acesso: Acesso, pedido: { telefone: string; nome?: string | null; motivo?: string | null }) {
+    /** Para o agente: cancela a consulta do paciente do telefone; sem `consultaId`, a próxima marcada. */
+    async cancelarDoPaciente(acesso: Acesso, pedido: ConsultaDoTelefone & { motivo?: string | null }) {
       exigirEscrita(acesso)
-      return uow.executar(async (r) => {
-        const paciente = await pacienteDoTelefone(r, acesso.clinicaId, pedido.telefone, pedido.nome)
-        const proxima = await r.consultas.proximaDosPacientes(acesso.clinicaId, [paciente.id], relogio.agora())
-        if (!proxima || !veUnidade(acesso, proxima.unidadeId)) {
-          throw new ErroDeDominio('nao_encontrado', 'SEM_CONSULTA_MARCADA', `${paciente.nome} não tem consulta marcada`)
-        }
-        const travada = await consultaVisivel(r, acesso, proxima.id)
-        return gravarMudancaDeStatus(r, acesso, travada, 'cancelada', pedido.motivo)
-      })
+      return uow.executar(async (r) => gravarMudancaDeStatus(r, acesso, await consultaMarcadaDoTelefone(r, acesso, pedido), 'cancelada', pedido.motivo))
+    },
+
+    /** Para o agente: o paciente respondeu ao lembrete. Sem `consultaId`, a próxima marcada. */
+    async confirmarDoPaciente(acesso: Acesso, pedido: ConsultaDoTelefone) {
+      exigirEscrita(acesso)
+      return uow.executar(async (r) => gravarMudancaDeStatus(r, acesso, await consultaMarcadaDoTelefone(r, acesso, pedido), 'confirmada'))
+    },
+
+    /** Uma consulta, no formato da tela; a que o acesso não enxerga é tratada como inexistente. */
+    async consulta(acesso: Acesso, consultaId: string): Promise<ConsultaNaAgenda> {
+      const consulta = await leituras.consulta(acesso.clinicaId, consultaId)
+      const doDentista = profissionalVisivel(acesso)
+      if (!consulta || !veUnidade(acesso, consulta.unidade.id) || (doDentista !== undefined && doDentista !== consulta.profissional.id)) {
+        throw new ErroDeDominio('nao_encontrado', 'CONSULTA_NAO_ENCONTRADA', 'Consulta não encontrada')
+      }
+      return consulta
     },
 
     /** A próxima consulta marcada do paciente, pelo id ou pelo telefone (e o nome, na família). */

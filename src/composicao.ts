@@ -1,5 +1,9 @@
 import type { Relogio } from '@/compartilhado/relogio'
 import { bancoResponde, obterBanco, type Banco } from '@/infra/banco/conexao'
+import { casosDeAcesso } from '@/modulos/acesso/aplicacao/casos'
+import { repositorioDeAcessoPostgres, segredosNode } from '@/modulos/acesso/infraestrutura/adaptadores'
+import { casosDosCadastros } from '@/modulos/cadastros/aplicacao/casos'
+import { cadastrosNoPostgres } from '@/modulos/cadastros/infraestrutura/repositorio-postgres'
 import { casosDaAgenda } from '@/modulos/agenda/aplicacao/casos'
 import { leiturasDaAgendaPostgres } from '@/modulos/agenda/infraestrutura/leituras-postgres'
 import { unidadeDeTrabalhoPostgres } from '@/modulos/agenda/infraestrutura/repositorios-postgres'
@@ -22,6 +26,8 @@ export function montarCasosDeUso({ banco, relogio, gerarId }: Dependencias) {
     sistema: {
       bancoResponde: () => bancoResponde(banco),
     },
+    acesso: casosDeAcesso({ repositorio: repositorioDeAcessoPostgres(banco), segredos: segredosNode, relogio, gerarId }),
+    cadastros: casosDosCadastros({ banco: cadastrosNoPostgres(banco), gerarId }),
     agenda: casosDaAgenda({ uow: unidadeDeTrabalhoPostgres(banco), leituras: leiturasDaAgendaPostgres(banco), relogio, gerarId }),
   }
 }

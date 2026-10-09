@@ -160,6 +160,7 @@ export interface FiltroDaAgenda {
 
 export interface LeiturasDaAgenda {
   agendaDoPeriodo(clinicaId: string, filtro: FiltroDaAgenda): Promise<ConsultaNaAgenda[]>
+  consulta(clinicaId: string, consultaId: string): Promise<ConsultaNaAgenda | null>
   /** Pelo nome sem acento, ou pelos dígitos do telefone. */
   buscarPacientes(clinicaId: string, texto: string, limite: number): Promise<PacienteEncontrado[]>
   /** Todas as consultas do paciente, da mais recente para a mais antiga. */

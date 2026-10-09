@@ -14,7 +14,7 @@ incremental sem convivência com dados vivos.
 | 2 | Esqueleto: Hono com zod e OpenAPI, Drizzle, pg-boss, vitest com PGlite, dependency-cruiser, CI no GitHub Actions, Dockerfile, `npm run verificar` | feita |
 | 3 | Esquema `agenda`: o [modelo de dados](modelo-de-dados.md) aprovado, as migrações `0000` e `0001` (não aplicadas) e os testes de banco (sobreposição por profissional, cadeira e paciente, mesma clínica nas chaves) | feita |
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | feita |
-| 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | médio |
+| 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | feita (ver "Decidido na construção (fase 5)") |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova | grande |
 | 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete | médio |
 | 8 | Acesso e deploy: login pelo item de menu, o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
@@ -64,6 +64,33 @@ Regras que a agenda antiga não tinha, ou tinha diferente, e que entraram em
    mesmo telefone é outra pessoa da família.
 10. **Paciente sem telefone não gera aviso** ao CRM nem à plataforma: os dois
     precisam do número.
+
+## Decidido na construção (fase 5, a confirmar com a equipe)
+
+1. **A API só aceita a chave por enquanto** (`Authorization: Bearer agd_...`). O
+   token da tela entra na fase 8, junto com o login pelo item de menu. Até lá, os
+   cadastros e as chaves (que são do gestor) só têm teste, sem quem os chame.
+2. **A chave é de uma clínica só**, e o `X-Clinica` só confere (pelo id ou pelo
+   companyId). A chave fica com o hash sha256, como no CRM; a coluna
+   `chave_cifrada` fica vazia até a tela de chaves precisar mostrar de novo.
+3. **Os cadastros e as chaves são do gestor.** A recepção e as chaves só leem os
+   cadastros, de que precisam para agendar. Os bloqueios são da recepção também, e
+   das chaves que gravam.
+4. **Nada dos cadastros se apaga, se desativa**, porque as consultas antigas
+   apontam para eles. Exceções: a especialidade sem uso e o bloqueio. A última
+   unidade ativa não se desativa.
+5. **A semana do profissional é trocada inteira** (`PUT
+   /profissionais/{id}/expedientes`). Tirar o profissional de uma unidade apaga os
+   expedientes dele lá.
+6. **O bloqueio não mexe nas consultas que já estão no período**: a recepção
+   remarca.
+7. **Os cadastros não entram no histórico** (`eventos` só aceita consulta e
+   paciente). Se a equipe quiser saber quem mudou um cadastro, é uma tabela nova.
+8. **As habilidades do agente ganharam o `confirmar`** (a regra 1 da fase 4) e
+   remarcar e cancelar aceitam o `consultaId`, como as antigas. As antigas
+   (`/api/agent/*` e `/api/auth/ai`) saíram: a única chave de IA nunca foi usada.
+9. **As rotas antigas da tela ficam até a fase 6**, porque as telas antigas ainda
+   as chamam. Saem junto com elas.
 
 ## Decidido com a equipe (2026-10-07)
 

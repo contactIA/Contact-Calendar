@@ -5,6 +5,9 @@ import { ErroDeDominio } from '@/compartilhado/erros'
 import { casosDeUso, type CasosDeUso } from '@/composicao'
 import { tratarErro } from './erros'
 import { novoRoteador } from './roteador'
+import { rotasDaAgenda } from './v1/agenda'
+import { rotasDoAgente } from './v1/agente'
+import { rotasDosCadastros } from './v1/cadastros'
 import { rotasDoSistema } from './v1/sistema'
 import { VERSAO_DA_API } from './versao'
 
@@ -26,9 +29,31 @@ API da agenda da ContactIA: consultas, horários livres, profissionais e pacient
 de cada clínica. É por ela que a tela, o agente de IA e as integrações leem e
 gravam.
 
-**Em construção.** As rotas entram fase a fase; por enquanto há só a saúde.
+## Comece aqui
+
+1. **Peça a chave** ao gestor da clínica (ou à equipe da ContactIA). Ela começa com
+   \`agd_\` e vai no cabeçalho \`Authorization: Bearer agd_...\`. Cada chave é de uma
+   clínica só: o \`X-Clinica\` é opcional e, quando vem, só confere.
+2. **Leia os cadastros** para ter os ids: \`GET /v1/unidades\`, \`GET /v1/procedimentos\`
+   e \`GET /v1/profissionais\`.
+3. **Veja os horários livres** (\`GET /v1/horarios-livres\`) e **agende**
+   (\`POST /v1/consultas\`).
+
+O **agente de IA**, que conhece o paciente pelo telefone da conversa, usa as rotas
+de "Agente de IA": recomendar, agendar, remarcar, confirmar e cancelar sem saber o
+id da consulta.
 
 ## Regras
+
+**Chaves.** A chave de leitura só consulta. A que grava agenda, remarca, confirma e
+cancela, sempre no futuro e dentro do expediente. Os cadastros são do gestor da
+clínica, pela tela.
+
+**Fuso.** Datas e horas em ISO 8601 com fuso (\`2026-10-08T10:00:00-03:00\`). A
+\`data\` (AAAA-MM-DD) e as horas do expediente são no fuso da clínica.
+
+**Edição simultânea.** Toda consulta tem \`versao\`. Mande a que você leu ao mudar a
+consulta: se outra pessoa mudou antes, a resposta é 409 \`CONSULTA_ALTERADA\`.
 
 **Erros.** Toda resposta de erro tem o formato
 \`{ "erro": "frase para quem lê", "codigo": "CODIGO_ESTAVEL" }\`. Quando a requisição
@@ -38,7 +63,15 @@ não passa na validação, vem também \`detalhes\`, com o campo e o motivo.
 `
 
 /** As seções do documento, na ordem em que uma integração costuma precisar delas. */
-const SECOES = [{ name: 'Sistema', description: 'Saúde da API.' }]
+const SECOES = [
+  { name: 'Horários', description: 'Os horários livres de cada profissional num dia.' },
+  { name: 'Consultas', description: 'Agendar, remarcar e mudar a situação da consulta.' },
+  { name: 'Pacientes', description: 'Busca, cadastro e o histórico de consultas.' },
+  { name: 'Agente de IA', description: 'As habilidades do agente, que acha o paciente pelo telefone.' },
+  { name: 'Cadastros', description: 'Unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes e bloqueios.' },
+  { name: 'Chaves', description: 'As chaves da API da clínica.' },
+  { name: 'Sistema', description: 'Saúde da API.' },
+]
 
 /** Monta os casos de uso só no primeiro uso: a documentação abre sem banco nem segredo. */
 function preguicoso<T extends object>(criar: () => T): T {
@@ -97,7 +130,7 @@ export function criarApi(obterCasos: () => CasosDeUso = casosDeUso) {
     description: 'Só para a chave que alcança mais de uma clínica: o id da clínica ou o companyId da conta. Com uma clínica só, deixe vazio',
   })
 
-  for (const rotas of [rotasDoSistema]) {
+  for (const rotas of [rotasDoSistema, rotasDaAgenda, rotasDoAgente, rotasDosCadastros]) {
     api.route('/v1', rotas)
   }
 

@@ -87,6 +87,12 @@ export function exigirQueCuidaDaAgenda(acesso: Acesso): void {
   }
 }
 
+/** Os cadastros da clínica e as chaves são do gestor. As chaves da API só leem os cadastros. */
+export function exigirGestor(acesso: Acesso): void {
+  if (acesso.tipo === 'usuario' && acesso.papeis.gestor) return
+  throw new ErroDeDominio('proibido', 'SO_GESTOR', 'Só o gestor pode fazer isso')
+}
+
 /** As unidades que o acesso enxerga; `null` quando são todas. */
 export function unidadesVisiveis(acesso: Acesso): string[] | null {
   if (acesso.tipo !== 'usuario' || acesso.papeis.gestor || !acesso.unidades?.length) return null

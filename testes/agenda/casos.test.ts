@@ -168,10 +168,24 @@ describe('a família no mesmo telefone', () => {
     const outra = await agendar(c, { inicio: as('16:00'), paciente: { nome: 'maria', telefone: '62999990000' } })
     expect(outra.paciente.id).toBe(mae.paciente.id)
 
-    expect(await codigoDoErro(casos.cancelarProxima(c.ia, { telefone: '62999990000' }))).toBe('PACIENTE_AMBIGUO')
-    const cancelada = await casos.cancelarProxima(c.ia, { telefone: '62999990000', nome: 'Pedro' })
+    expect(await codigoDoErro(casos.cancelarDoPaciente(c.ia, { telefone: '62999990000' }))).toBe('PACIENTE_AMBIGUO')
+    const cancelada = await casos.cancelarDoPaciente(c.ia, { telefone: '62999990000', nome: 'Pedro' })
     expect(cancelada.id).toBe(filho.consulta.id)
     expect(cancelada.status).toBe('cancelada')
+  })
+
+  it('o agente remarca pelo telefone, e a consulta de outro paciente pelo id não existe para ele', async () => {
+    const c = await montarClinicaDaAgenda(pg)
+    const mae = await agendar(c)
+    const vizinha = await agendar(c, { profissionalId: c.bruno, inicio: as('14:00'), paciente: { nome: 'Joana Lima', telefone: '62988887777' } })
+
+    const remarcada = await casos.remarcarDoPaciente(c.ia, { telefone: '62999990000', inicio: as('11:00') })
+    expect(remarcada.id).toBe(mae.consulta.id)
+    expect(horaDe(remarcada.inicio)).toBe('11:00')
+
+    const daVizinha = { telefone: '62999990000', consultaId: vizinha.consulta.id, inicio: as('15:00') }
+    expect(await codigoDoErro(casos.remarcarDoPaciente(c.ia, daVizinha))).toBe('CONSULTA_NAO_ENCONTRADA')
+    expect(await codigoDoErro(casos.cancelarDoPaciente(c.ia, daVizinha))).toBe('CONSULTA_NAO_ENCONTRADA')
   })
 
   it('cadastrar de novo o mesmo nome no mesmo número é recusado', async () => {

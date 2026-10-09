@@ -7,6 +7,7 @@ export {
   cuidaDaAgenda,
   ehChave,
   exigirEscrita,
+  exigirGestor,
   exigirQueCuidaDaAgenda,
   profissionalVisivel,
   unidadesVisiveis,
