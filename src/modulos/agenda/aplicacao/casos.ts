@@ -667,6 +667,19 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
       return leituras.buscarPacientes(acesso.clinicaId, busca, 20)
     },
 
+    /**
+     * A lista de pacientes da tela, por nome, uma página por vez. Com busca de 2
+     * letras ou mais, só os que batem; com menos, todos.
+     */
+    async listarPacientes(acesso: Acesso, pedido: { busca?: string; pagina: number; porPagina: number }) {
+      const busca = pedido.busca?.trim() ?? ''
+      return leituras.listarPacientes(acesso.clinicaId, {
+        busca: busca.length >= 2 ? busca : null,
+        limite: pedido.porPagina,
+        deslocamento: (pedido.pagina - 1) * pedido.porPagina,
+      })
+    },
+
     /** O Paciente 360: o cadastro, as consultas e a última visita. */
     async historicoDoPaciente(acesso: Acesso, pacienteId: string) {
       const paciente = await uow.executar((r) => r.pacientes.obter(acesso.clinicaId, pacienteId))

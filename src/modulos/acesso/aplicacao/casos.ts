@@ -1,6 +1,6 @@
 import { ErroDeDominio } from '@/compartilhado/erros'
 import type { Relogio } from '@/compartilhado/relogio'
-import type { TipoDeChaveApi } from '@/compartilhado/vocabulario'
+import { CADENCIAS_DA_GRADE, type TipoDeChaveApi } from '@/compartilhado/vocabulario'
 import { exigirGestor, type Acesso, type AcessoDeChave, type AcessoDeUsuario, type Papeis } from '../dominio/acesso'
 import { conferirEntrada, temAlgumPapel, type MotivoDeRecusa, type PedidoDeEntrada } from '../dominio/entrada'
 import type {
@@ -80,7 +80,29 @@ export function casosDeAcesso({
   configuracao,
   gerarId = () => crypto.randomUUID(),
 }: DependenciasDeAcesso) {
+  /** Quem está usando a tela. Só a sessão de uma pessoa: a chave não tem "eu". */
+  async function eu(acesso: Acesso): Promise<Eu> {
+    if (acesso.tipo !== 'usuario') {
+      throw new ErroDeDominio('proibido', 'SO_PELA_TELA', 'Esta rota é da tela: abra a agenda pelo menu da plataforma')
+    }
+    const clinica = await repositorio.clinicaDaSessao(acesso.clinicaId)
+    if (!clinica) throw naoAutenticado('Esta clínica não está ativa na agenda')
+    const { ativa: _, ...semAtiva } = clinica
+    return {
+      usuario: {
+        id: acesso.usuarioId,
+        nome: acesso.nome,
+        papeis: acesso.papeis,
+        profissionalId: acesso.profissionalId,
+        unidades: acesso.unidades ?? [],
+      },
+      clinica: semAtiva,
+    }
+  }
+
   return {
+    eu,
+
     /**
      * A entrada pelo item de menu (?companyId=…&userId=…). Recusa sem lançar: a
      * página mostra o recado de cada motivo. Lança só quando o servidor não está
@@ -142,24 +164,17 @@ export function casosDeAcesso({
       }
     },
 
-    /** Quem está usando a tela. Só a sessão de uma pessoa: a chave não tem "eu". */
-    async eu(acesso: Acesso): Promise<Eu> {
-      if (acesso.tipo !== 'usuario') {
-        throw new ErroDeDominio('proibido', 'SO_PELA_TELA', 'Esta rota é da tela: abra a agenda pelo menu da plataforma')
+    /**
+     * A cadência da grade: de quanto em quanto tempo a agenda oferece um início.
+     * Só o gestor. A duração continua a do procedimento.
+     */
+    async alterarCadencia(acesso: Acesso, minutos: number): Promise<Eu> {
+      exigirGestor(acesso)
+      if (!(CADENCIAS_DA_GRADE as readonly number[]).includes(minutos)) {
+        throw new ErroDeDominio('invalido', 'CADENCIA_INVALIDA', `A cadência é de ${CADENCIAS_DA_GRADE.join(', ')} minutos`)
       }
-      const clinica = await repositorio.clinicaDaSessao(acesso.clinicaId)
-      if (!clinica) throw naoAutenticado('Esta clínica não está ativa na agenda')
-      const { ativa: _, ...semAtiva } = clinica
-      return {
-        usuario: {
-          id: acesso.usuarioId,
-          nome: acesso.nome,
-          papeis: acesso.papeis,
-          profissionalId: acesso.profissionalId,
-          unidades: acesso.unidades ?? [],
-        },
-        clinica: semAtiva,
-      }
+      await repositorio.definirCadencia(acesso.clinicaId, minutos)
+      return eu(acesso)
     },
 
     /**

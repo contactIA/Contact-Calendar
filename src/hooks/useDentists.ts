@@ -1,28 +1,31 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api } from '@/lib/client'
+import type { ProfissionalJson } from '@/api/v1/esquemas'
+import { api } from '@/componentes/cliente/api'
+import { useEu } from '@/componentes/casca'
+import { paraDentist } from './daApi'
+import type { Dentist } from './tiposDaTela'
+export type { Dentist } from './tiposDaTela'
 
-export type Dentist = {
-  id: string
-  color: string
-  cro: string | null
-  specialty: string[]
-  user: { id: string; name: string; email: string | null } | null
-  units: { unit_id: string; priority: number }[] | null
-}
-
+/**
+ * Os profissionais ativos. O dentista que não é gestor nem recepção vê só a
+ * agenda dele: a API já devolve só as consultas dele, e a coluna dos outros sai.
+ */
 export function useDentists() {
+  const eu = useEu()
   const [dentists, setDentists] = useState<Dentist[]>([])
   const [loading, setLoading] = useState(true)
+  const { gestor, recepcao } = eu.usuario.papeis
+  const so = gestor || recepcao ? null : eu.usuario.profissionalId
 
   useEffect(() => {
     api
-      .get<Dentist[]>('/api/dentists')
-      .then(setDentists)
+      .get<{ profissionais: ProfissionalJson[] }>('/profissionais')
+      .then(({ profissionais }) => setDentists(profissionais.filter((p) => p.ativo && (so === null || p.id === so)).map(paraDentist)))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [so])
 
   return { dentists, loading }
 }

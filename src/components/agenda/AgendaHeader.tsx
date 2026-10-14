@@ -31,7 +31,8 @@ type Props = {
   totalToday: number
   onDateChange: (date: Date) => void
   onViewChange: (view: View) => void
-  onNewAppointment: () => void
+  /** Sem ele (o dentista, que não agenda), o botão "Agendar" não aparece. */
+  onNewAppointment?: () => void
   onSearch: (q: string) => void
   searchResults: Appointment[]
   onAppointmentSelect: (appt: Appointment) => void
@@ -63,7 +64,7 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
   return (
     <header className="h-[60px] px-6 flex items-center gap-4 border-b border-gray-200 bg-white flex-shrink-0 relative z-30">
       {/* Agendar */}
-      <button
+      {onNewAppointment && <button
         onClick={onNewAppointment}
         className="bg-brand flex items-center gap-1.5 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex-shrink-0"
         style={{ boxShadow: '0 2px 8px rgba(147,51,234,.3)' }}
@@ -72,7 +73,7 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
         Agendar
-      </button>
+      </button>}
 
       {/* Date nav */}
       <div className="flex items-center gap-2 flex-shrink-0">

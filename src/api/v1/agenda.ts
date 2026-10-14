@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi'
 import { corpoJson, DataHora, ERROS_COMUNS, erros, json, ParametroId, SEGURANCA, serializar } from '../apoio'
 import { exigirAcesso } from '../autenticacao'
 import { novoRoteador } from '../roteador'
-import { Consulta, HorarioLivre, Paciente, PacienteEncontrado, StatusDaConsulta } from './esquemas'
+import { Consulta, HorarioLivre, Paciente, PacienteDaLista, StatusDaConsulta } from './esquemas'
 
 // A agenda: horários livres, consultas e pacientes. É o que a tela faz, e o que
 // uma integração faz pelo id da consulta. O agente de IA, que conhece o paciente
@@ -165,11 +165,21 @@ const buscarPacientes = createRoute({
   method: 'get',
   path: '/pacientes',
   tags: ['Pacientes'],
-  summary: 'Buscar pacientes',
-  description: 'Pelo nome, sem diferença de acento nem de maiúscula, ou pelos dígitos do telefone. Até 20, por nome.',
+  summary: 'Buscar e listar pacientes',
+  description:
+    'Por nome, uma página por vez. Com `busca` de 2 letras ou mais, só os que batem: pelo nome, sem diferença de acento nem de maiúscula, ou pelos dígitos do telefone.',
   security: SEGURANCA,
-  request: { query: z.object({ busca: z.string().max(200).openapi({ example: 'maria' }) }) },
-  responses: { 200: json(z.object({ pacientes: z.array(PacienteEncontrado) }), 'Os pacientes encontrados'), ...erros(...ERROS_COMUNS) },
+  request: {
+    query: z.object({
+      busca: z.string().max(200).optional().openapi({ example: 'maria' }),
+      pagina: z.coerce.number().int().min(1).default(1),
+      porPagina: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+  },
+  responses: {
+    200: json(z.object({ pacientes: z.array(PacienteDaLista), total: z.number().int().openapi({ description: 'Quantos há, em todas as páginas' }) }), 'Os pacientes'),
+    ...erros(...ERROS_COMUNS),
+  },
 })
 
 const criarPaciente = createRoute({
@@ -255,8 +265,7 @@ export const rotasDaAgenda = r
     return c.json(serializar(await c.var.casos.agenda.consulta(c.var.acesso, id)), 200)
   })
   .openapi(buscarPacientes, async (c) => {
-    const pacientes = await c.var.casos.agenda.buscarPacientes(c.var.acesso, c.req.valid('query').busca)
-    return c.json({ pacientes }, 200)
+    return c.json(serializar(await c.var.casos.agenda.listarPacientes(c.var.acesso, c.req.valid('query'))), 200)
   })
   .openapi(criarPaciente, async (c) => {
     return c.json(paraPaciente(await c.var.casos.agenda.criarPaciente(c.var.acesso, c.req.valid('json'))), 201)

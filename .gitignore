@@ -48,3 +48,6 @@ graphify-out/
 
 # config local do Claude Code (pessoal, não compartilhada)
 .claude/
+
+# banco local de desenvolvimento (npm run banco:local)
+.banco-local/

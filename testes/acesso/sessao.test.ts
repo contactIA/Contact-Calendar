@@ -187,4 +187,22 @@ describe('a sessão na API', () => {
     const resposta = await semSegredo.request('/api/v1/eu', { headers: { 'X-Agenda-Sessao': 'qualquer.coisa' } })
     expect(resposta.status).toBe(401)
   })
+
+  it('a cadência da grade: só o gestor muda, e só para os valores da lista', async () => {
+    const { companyId, gestora, recepcao } = await clinicaComUsuarios()
+    const mudar = async (token: string, cadenciaMinutos: number) =>
+      api.request('/api/v1/clinica', {
+        method: 'PATCH',
+        headers: { 'X-Agenda-Sessao': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cadenciaMinutos }),
+      })
+    const daGestora = await entrar(companyId, gestora.plataforma)
+    const mudou = await mudar(daGestora, 15)
+    expect(mudou.status).toBe(200)
+    expect(await mudou.json()).toMatchObject({ clinica: { cadenciaMinutos: 15 } })
+    const invalida = await mudar(daGestora, 45)
+    expect(invalida.status).toBe(400)
+    expect(await invalida.json()).toMatchObject({ codigo: 'CADENCIA_INVALIDA' })
+    expect((await mudar(await entrar(companyId, recepcao.plataforma), 30)).status).toBe(403)
+  })
 })

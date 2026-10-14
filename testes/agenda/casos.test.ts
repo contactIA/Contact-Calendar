@@ -302,6 +302,19 @@ describe('leituras', () => {
     expect((await casos.buscarPacientes(c.recepcao, '5555-4444')).map((p) => p.nome)).toEqual(['João Antônio'])
   })
 
+  it('a lista de pacientes da tela, por nome e em páginas, com ou sem busca', async () => {
+    const c = await montarClinicaDaAgenda(pg)
+    for (const nome of ['Carla', 'Ana', 'Bruna']) await casos.criarPaciente(c.recepcao, { nome, observacoes: nome === 'Ana' ? 'Prefere à tarde' : null })
+    const primeira = await casos.listarPacientes(c.recepcao, { pagina: 1, porPagina: 2 })
+    expect(primeira.total).toBe(3)
+    expect(primeira.pacientes.map((p) => p.nome)).toEqual(['Ana', 'Bruna'])
+    expect(primeira.pacientes[0]).toMatchObject({ observacoes: 'Prefere à tarde', criadoEm: expect.any(Date) })
+    expect((await casos.listarPacientes(c.recepcao, { pagina: 2, porPagina: 2 })).pacientes.map((p) => p.nome)).toEqual(['Carla'])
+    // Uma letra só não filtra: a lista inteira.
+    expect((await casos.listarPacientes(c.recepcao, { busca: 'b', pagina: 1, porPagina: 20 })).total).toBe(3)
+    expect(await casos.listarPacientes(c.recepcao, { busca: 'bru', pagina: 1, porPagina: 20 })).toMatchObject({ total: 1, pacientes: [{ nome: 'Bruna' }] })
+  })
+
   it('a próxima consulta e o histórico do paciente', async () => {
     const c = await montarClinicaDaAgenda(pg)
     const { consulta, paciente } = await agendar(c)

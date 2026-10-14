@@ -10,6 +10,15 @@ import type { ConsultaNaAgenda, LeiturasDaAgenda } from '../aplicacao/portas'
 
 const p = alias(pacientes, 'p')
 
+/** Pelo nome sem acento, ou pelos dígitos do telefone quando o texto é quase só número. */
+function filtroDaBusca(texto: string): SQL {
+  const digitos = texto.replace(/\D/g, '')
+  const porTelefone = digitos.length >= 4 && digitos.length >= texto.replace(/\s/g, '').length - 3
+  return porTelefone
+    ? sql`${pacientes.telefone} like ${'%' + digitos + '%'}`
+    : sql`extensions.unaccent(lower(${pacientes.nome})) like '%' || extensions.unaccent(lower(${texto})) || '%'`
+}
+
 const CAMPOS_DA_CONSULTA = {
   id: consultas.id,
   inicio: consultas.inicio,
@@ -79,17 +88,35 @@ export function leiturasDaAgendaPostgres(db: Banco): LeiturasDaAgenda {
     },
 
     async buscarPacientes(clinicaId, texto, limite) {
-      const digitos = texto.replace(/\D/g, '')
-      const porTelefone = digitos.length >= 4 && digitos.length >= texto.replace(/\s/g, '').length - 3
-      const filtro = porTelefone
-        ? sql`${pacientes.telefone} like ${'%' + digitos + '%'}`
-        : sql`extensions.unaccent(lower(${pacientes.nome})) like '%' || extensions.unaccent(lower(${texto})) || '%'`
       return db
         .select({ id: pacientes.id, nome: pacientes.nome, telefone: pacientes.telefone, email: pacientes.email, nascimento: pacientes.nascimento })
         .from(pacientes)
-        .where(and(eq(pacientes.clinica_id, clinicaId), filtro))
+        .where(and(eq(pacientes.clinica_id, clinicaId), filtroDaBusca(texto)))
         .orderBy(asc(pacientes.nome))
         .limit(limite)
+    },
+
+    async listarPacientes(clinicaId, { busca, limite, deslocamento }) {
+      const onde = and(eq(pacientes.clinica_id, clinicaId), busca ? filtroDaBusca(busca) : undefined)
+      const [linhas, [contagem]] = await Promise.all([
+        db
+          .select({
+            id: pacientes.id,
+            nome: pacientes.nome,
+            telefone: pacientes.telefone,
+            email: pacientes.email,
+            nascimento: pacientes.nascimento,
+            observacoes: pacientes.observacoes,
+            criadoEm: pacientes.criado_em,
+          })
+          .from(pacientes)
+          .where(onde)
+          .orderBy(asc(pacientes.nome), asc(pacientes.id))
+          .limit(limite)
+          .offset(deslocamento),
+        db.select({ total: sql<number>`count(*)::int`.mapWith(Number) }).from(pacientes).where(onde),
+      ])
+      return { pacientes: linhas, total: contagem?.total ?? 0 }
     },
 
     async consulta(clinicaId, consultaId) {

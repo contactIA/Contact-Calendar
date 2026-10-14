@@ -3,7 +3,9 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
-import { api } from '@/lib/client'
+import type { ConsultaJson, PacienteEncontradoJson } from '@/api/v1/esquemas'
+import { api } from '@/componentes/cliente/api'
+import { paraAppointment } from '@/hooks/daApi'
 import { AgendaHeader } from './AgendaHeader'
 import { AgendaSidebar } from './AgendaSidebar'
 import { KPIStrip } from './KPIStrip'
@@ -19,12 +21,16 @@ import { useDentists } from '@/hooks/useDentists'
 import { useUnits } from '@/hooks/useUnits'
 import { useProcedures } from '@/hooks/useProcedures'
 import { useScheduleBlocks } from '@/hooks/useScheduleBlocks'
+import { useEu } from '@/componentes/casca'
 
 type View = 'day' | 'week' | 'list'
 
 // Só aceitamos UUIDs vindos da URL — um valor inválido quebraria a validação
 // Zod do endpoint de appointments (400) e travaria a agenda inteira.
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+/** Quantos pacientes a busca abre para trazer as consultas: um pedido para cada. */
+const PACIENTES_NA_BUSCA = 5
 
 function getInitials(name: string) {
   return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
@@ -83,6 +89,9 @@ export function AgendaShell() {
   const [focusRequest, setFocusRequest] = useState<{ apptId: string; minutes: number; token: number } | null>(null)
 
   const { dentists, loading: loadingDentists } = useDentists()
+  // Quem agenda é a recepção e o gestor; o dentista só vê e marca a chegada.
+  const { papeis } = useEu().usuario
+  const agenda = papeis.gestor || papeis.recepcao
   const { units } = useUnits()
   const { procedures } = useProcedures()
 
@@ -179,19 +188,28 @@ export function AgendaShell() {
   // Carregando enquanto dentistas OU agendamentos ainda não chegaram.
   const isLoading = loading || loadingDentists
 
-  // Busca GLOBAL (todos os dias): consulta o backend de forma debounced a partir
-  // de 2 caracteres. Desacoplada da grade — a grade segue mostrando o dia inteiro.
+  // Busca GLOBAL (todos os dias), pelo paciente: acha os pacientes pelo nome ou
+  // telefone e traz as consultas deles. Debounced, a partir de 2 caracteres.
+  // Desacoplada da grade: a grade segue mostrando o dia inteiro.
   const [searchResults, setSearchResults] = useState<Appointment[]>([])
   useEffect(() => {
     const q = search.trim()
     let cancelled = false
-    // O clear/fetch roda dentro do timeout (assíncrono) — nunca setState síncrono
+    // O clear/fetch roda dentro do timeout (assíncrono): nunca setState síncrono
     // no corpo do effect. Com q < 2 caracteres limpamos imediatamente (delay 0).
     const t = setTimeout(async () => {
       if (q.length < 2) { if (!cancelled) setSearchResults([]); return }
       try {
-        const res = await api.get<{ data: Appointment[] }>(`/api/appointments?q=${encodeURIComponent(q)}&page_size=30`)
-        if (!cancelled) setSearchResults(res.data ?? [])
+        const { pacientes } = await api.get<{ pacientes: PacienteEncontradoJson[] }>(`/pacientes?busca=${encodeURIComponent(q)}`)
+        const detalhes = await Promise.all(
+          pacientes.slice(0, PACIENTES_NA_BUSCA).map(p => api.get<{ consultas: ConsultaJson[] }>(`/pacientes/${p.id}`))
+        )
+        const consultas = detalhes
+          .flatMap(d => d.consultas)
+          .map(paraAppointment)
+          .sort((a, b) => b.start_at.localeCompare(a.start_at))
+          .slice(0, 30)
+        if (!cancelled) setSearchResults(consultas)
       } catch {
         if (!cancelled) setSearchResults([])
       }
@@ -204,10 +222,11 @@ export function AgendaShell() {
   }, [])
 
   const handleSlotClick = useCallback((dentistId: string, startIso: string) => {
+    if (!agenda) return
     const [d, t] = startIso.split('T')
     setModalInitial({ dentistId, date: d, time: t })
     setModalOpen(true)
-  }, [])
+  }, [agenda])
 
   const handleDayClick = useCallback((dayStr: string) => {
     setDate(new Date(dayStr + 'T12:00:00'))
@@ -255,7 +274,7 @@ export function AgendaShell() {
           totalToday={appointments.length}
           onDateChange={setDate}
           onViewChange={v => { setView(v); setListPage(1) }}
-          onNewAppointment={() => { setModalInitial({}); setModalOpen(true) }}
+          onNewAppointment={agenda ? () => { setModalInitial({}); setModalOpen(true) } : undefined}
           onSearch={setSearch}
           searchResults={searchResults}
           onAppointmentSelect={handleAppointmentSelect}

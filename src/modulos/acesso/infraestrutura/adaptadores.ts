@@ -88,6 +88,10 @@ export function repositorioDeAcessoPostgres(db: Banco): RepositorioDeAcesso {
       return c ?? null
     },
 
+    async definirCadencia(clinicaId, minutos) {
+      await db.update(clinicas).set({ cadencia_minutos: minutos }).where(eq(clinicas.id, clinicaId))
+    },
+
     async usuarioDaPlataforma(clinicaId, usuarioPlataformaId) {
       if (!UUID.test(usuarioPlataformaId)) return null
       return usuarioOnde(db, clinicaId, eq(usuarios.usuario_plataforma_id, usuarioPlataformaId))

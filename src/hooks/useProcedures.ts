@@ -1,25 +1,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api } from '@/lib/client'
+import type { ProcedimentoJson } from '@/api/v1/esquemas'
+import { api } from '@/componentes/cliente/api'
+import { paraProcedure } from './daApi'
+import type { Procedure } from './tiposDaTela'
+export type { Procedure } from './tiposDaTela'
 
-export type Procedure = {
-  id: string
-  name: string
-  duration_minutes: number
-  color: string | null
-  required_specialty: string[] | null
-}
-
+/** Os procedimentos ativos. */
 export function useProcedures() {
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api
-      .get<Procedure[]>('/api/procedures')
-      .then(setProcedures)
-      .catch(() => { })
+      .get<{ procedimentos: ProcedimentoJson[] }>('/procedimentos')
+      .then(({ procedimentos }) => setProcedures(procedimentos.filter((p) => p.ativo).map(paraProcedure)))
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 

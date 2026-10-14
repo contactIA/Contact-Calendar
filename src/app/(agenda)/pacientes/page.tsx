@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format, differenceInYears, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { api } from '@/lib/client'
+import type { PacienteDaListaJson, PacienteJson } from '@/api/v1/esquemas'
+import { useEu } from '@/componentes/casca'
+import { api, fraseDoErro } from '@/componentes/cliente/api'
 
 type Patient = {
   id: string
@@ -17,7 +19,20 @@ type Patient = {
   created_at: string
 }
 
-type ListResult = { data: Patient[]; total: number; page: number; page_size: number }
+type ListResult = { pacientes: PacienteDaListaJson[]; total: number }
+
+/** O paciente da API nos nomes que a tela usa. */
+function paraPatient(p: PacienteJson | PacienteDaListaJson, criadoEm?: string): Patient {
+  return {
+    id: p.id,
+    name: p.nome,
+    phone: p.telefone,
+    email: p.email,
+    birth_date: p.nascimento,
+    notes: p.observacoes,
+    created_at: 'criadoEm' in p ? p.criadoEm : (criadoEm ?? new Date().toISOString()),
+  }
+}
 
 function age(birth_date: string | null | undefined) {
   if (!birth_date) return null
@@ -26,7 +41,9 @@ function age(birth_date: string | null | undefined) {
 
 function formatPhone(p: string | null | undefined) {
   if (!p) return '—'
-  const d = p.replace(/\D/g, '')
+  // A API guarda no formato internacional (+55...): o Brasil sai sem o código do país.
+  const todos = p.replace(/\D/g, '')
+  const d = todos.length >= 12 && todos.startsWith('55') ? todos.slice(2) : todos
   if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`
   if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`
   return p
@@ -53,10 +70,9 @@ type ModalProps = {
   patient: Patient | null
   onClose: () => void
   onSaved: (p: Patient) => void
-  accountId: string
 }
 
-function PatientModal({ open, patient, onClose, onSaved, accountId }: ModalProps) {
+function PatientModal({ open, patient, onClose, onSaved }: ModalProps) {
   const { mounted, closing } = useAnimatedMount(open, 180)
   const isNew = !patient
   const [name, setName]           = useState(patient?.name ?? '')
@@ -77,21 +93,20 @@ function PatientModal({ open, patient, onClose, onSaved, accountId }: ModalProps
     if (!name.trim()) { setError('Nome é obrigatório'); return }
     setSaving(true); setError('')
     try {
-      const payload: Record<string, string> = { name: name.trim() }
-      if (phone) payload.phone = phone
-      if (email) payload.email = email
-      if (birthDate) payload.birth_date = birthDate
-      if (notes) payload.notes = notes
-
-      let saved: Patient
-      if (isNew) {
-        saved = await api.post<Patient>(`/api/patients`, payload)
-      } else {
-        saved = await api.patch<Patient>(`/api/patients/${patient!.id}`, payload)
+      // Campo vazio vai como null: na edição, apaga o que havia.
+      const payload = {
+        nome: name.trim(),
+        telefone: phone.trim() || null,
+        email: email.trim() || null,
+        nascimento: birthDate || null,
+        observacoes: notes.trim() || null,
       }
-      onSaved(saved)
+      const saved = isNew
+        ? await api.post<PacienteJson>('/pacientes', payload)
+        : await api.patch<PacienteJson>(`/pacientes/${patient!.id}`, payload)
+      onSaved(paraPatient(saved, patient?.created_at))
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao salvar')
+      setError(fraseDoErro(e))
     } finally {
       setSaving(false)
     }
@@ -176,12 +191,10 @@ function PatientModal({ open, patient, onClose, onSaved, accountId }: ModalProps
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export default function PacientesPage() {
-  const params       = useParams()
   const router       = useRouter()
-  const searchParams = useSearchParams()
-  const accountId    = params?.accountId as string
-  const userId       = searchParams?.get('userId') ?? ''
-  const userQuery    = userId ? `?userId=${userId}` : ''
+  // Quem cadastra paciente é a recepção e o gestor; o dentista só consulta.
+  const { papeis }   = useEu().usuario
+  const podeEditar   = papeis.gestor || papeis.recepcao
 
   const [patients, setPatients] = useState<Patient[]>([])
   const [total, setTotal]       = useState(0)
@@ -196,10 +209,10 @@ export default function PacientesPage() {
   const load = useCallback(async (q: string, pg: number) => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ page: String(pg), page_size: String(PAGE_SIZE) })
-      if (q.length >= 3) qs.set('q', q)
-      const res = await api.get<ListResult>(`/api/patients?${qs}`)
-      setPatients(res.data)
+      const qs = new URLSearchParams({ pagina: String(pg), porPagina: String(PAGE_SIZE) })
+      if (q.length >= 2) qs.set('busca', q)
+      const res = await api.get<ListResult>(`/pacientes?${qs}`)
+      setPatients(res.pacientes.map(p => paraPatient(p)))
       setTotal(res.total)
     } catch {
       // ignore
@@ -208,7 +221,8 @@ export default function PacientesPage() {
     }
   }, [])
 
-  useEffect(() => { load(search, page) }, [search, page, load])
+  // Dentro de uma promessa: nunca setState síncrono no corpo do effect.
+  useEffect(() => { void Promise.resolve().then(() => load(search, page)) }, [search, page, load])
 
   function handleSearchInput(val: string) {
     setInputValue(val)
@@ -235,7 +249,7 @@ export default function PacientesPage() {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center gap-4">
         <button
-          onClick={() => router.push(`/${accountId}/agenda${userQuery}`)}
+          onClick={() => router.push('/agenda')}
           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           title="Voltar à agenda"
         >
@@ -265,13 +279,15 @@ export default function PacientesPage() {
           )}
         </div>
 
-        <button
-          onClick={() => setModal({ open: true, patient: null })}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90 transition-opacity"
-        >
-          <span>+</span>
-          Novo paciente
-        </button>
+        {podeEditar && (
+          <button
+            onClick={() => setModal({ open: true, patient: null })}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90 transition-opacity"
+          >
+            <span>+</span>
+            Novo paciente
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -290,7 +306,7 @@ export default function PacientesPage() {
               <p className="text-xs text-gray-400 mb-4">
                 {search ? `Sem resultados para "${search}"` : 'Clique em "Novo paciente" para começar'}
               </p>
-              {!search && (
+              {!search && podeEditar && (
                 <button
                   onClick={() => setModal({ open: true, patient: null })}
                   className="px-4 py-2 rounded-xl text-sm font-semibold bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors"
@@ -341,14 +357,14 @@ export default function PacientesPage() {
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                            <button
+                            {podeEditar && <button
                               onClick={() => setModal({ open: true, patient: p })}
                               className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
                             >
                               Editar
-                            </button>
+                            </button>}
                             <button
-                              onClick={() => router.push(`/${accountId}/agenda${userQuery}`)}
+                              onClick={() => router.push('/agenda')}
                               className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-violet-600 hover:bg-violet-50 transition-colors"
                             >
                               Agendar
@@ -395,7 +411,6 @@ export default function PacientesPage() {
         patient={modal.patient}
         onClose={() => setModal({ open: false, patient: null })}
         onSaved={handleSaved}
-        accountId={accountId}
       />
     </div>
   )

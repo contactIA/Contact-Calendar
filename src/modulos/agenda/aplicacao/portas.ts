@@ -150,6 +150,12 @@ export interface PacienteEncontrado {
   nascimento: string | null
 }
 
+/** O paciente na lista da tela: com as observações e quando foi cadastrado. */
+export interface PacienteDaLista extends PacienteEncontrado {
+  observacoes: string | null
+  criadoEm: Date
+}
+
 export interface FiltroDaAgenda {
   de: Date
   ate: Date
@@ -163,6 +169,8 @@ export interface LeiturasDaAgenda {
   consulta(clinicaId: string, consultaId: string): Promise<ConsultaNaAgenda | null>
   /** Pelo nome sem acento, ou pelos dígitos do telefone. */
   buscarPacientes(clinicaId: string, texto: string, limite: number): Promise<PacienteEncontrado[]>
+  /** A lista da tela, por nome, numa página; com `busca`, só os que batem (como em buscarPacientes). */
+  listarPacientes(clinicaId: string, filtro: { busca: string | null; limite: number; deslocamento: number }): Promise<{ pacientes: PacienteDaLista[]; total: number }>
   /** Todas as consultas do paciente, da mais recente para a mais antiga. */
   consultasDoPaciente(clinicaId: string, pacienteId: string): Promise<ConsultaNaAgenda[]>
 }

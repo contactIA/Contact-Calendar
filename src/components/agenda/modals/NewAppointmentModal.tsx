@@ -3,7 +3,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format, addMinutes, parse, parseISO } from 'date-fns'
-import { api } from '@/lib/client'
+import type { CadeiraJson, PacienteEncontradoJson, PacienteJson, ProcedimentoJson, UnidadeJson } from '@/api/v1/esquemas'
+import { instanteNoFuso } from '@/compartilhado/fuso'
+import { useEu } from '@/componentes/casca'
+import { api, fraseDoErro } from '@/componentes/cliente/api'
 import { type Dentist } from '@/hooks/useDentists'
 import { SlotPicker } from './SlotPicker'
 import { type Slot } from '@/hooks/useSlots'
@@ -12,6 +15,8 @@ type Patient   = { id: string; name: string; phone: string | null }
 type Procedure = { id: string; name: string; duration_minutes: number; color: string }
 type Unit      = { id: string; name: string }
 type Chair     = { id: string; name: string; unit_id: string }
+
+const paraPatient = (p: PacienteEncontradoJson | PacienteJson): Patient => ({ id: p.id, name: p.nome, phone: p.telefone })
 
 type Props = {
   open: boolean
@@ -33,6 +38,7 @@ type Props = {
 
 export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initialDentistId, initialDate, initialTime }: Props) {
   const { mounted, closing } = useAnimatedMount(open, 180)
+  const fuso = useEu().clinica.fusoHorario
   const [step, setStep] = useState<'patient' | 'details' | 'time'>('patient')
 
   // Patient search
@@ -95,9 +101,15 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
 
   useEffect(() => {
     if (!open) return
-    api.get<Procedure[]>('/api/procedures').then(setProcedures).catch(() => {})
-    api.get<Unit[]>('/api/units').then(setUnits).catch(() => {})
-    api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
+    api.get<{ procedimentos: ProcedimentoJson[] }>('/procedimentos')
+      .then(r => setProcedures(r.procedimentos.filter(p => p.ativo).map(p => ({ id: p.id, name: p.nome, duration_minutes: p.duracaoMinutos, color: p.cor }))))
+      .catch(() => {})
+    api.get<{ unidades: UnidadeJson[] }>('/unidades')
+      .then(r => setUnits(r.unidades.filter(u => u.ativa).map(u => ({ id: u.id, name: u.nome }))))
+      .catch(() => {})
+    api.get<{ cadeiras: CadeiraJson[] }>('/cadeiras')
+      .then(r => setChairs(r.cadeiras.filter(c => c.ativa).map(c => ({ id: c.id, name: c.nome, unit_id: c.unidadeId }))))
+      .catch(() => {})
   }, [open])
 
   // Ao abrir, semeia dentista/data/horário a partir do slot clicado.
@@ -115,8 +127,8 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
   useEffect(() => {
     if (patientQuery.length < 3) { setPatients([]); setSearchDone(false); return }
     const t = setTimeout(() => {
-      api.get<{ data: Patient[] }>(`/api/patients?q=${encodeURIComponent(patientQuery)}`)
-        .then(r => { setPatients(r.data ?? []); setSearchDone(true) })
+      api.get<{ pacientes: PacienteEncontradoJson[] }>(`/pacientes?busca=${encodeURIComponent(patientQuery)}`)
+        .then(r => { setPatients(r.pacientes.map(paraPatient)); setSearchDone(true) })
         .catch(() => { setPatients([]); setSearchDone(true) })
     }, 300)
     return () => clearTimeout(t)
@@ -151,15 +163,15 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     if (!newName.trim()) { setPatientError('Nome é obrigatório'); return }
     setSavingPatient(true); setPatientError(null)
     try {
-      const created = await api.post<Patient>('/api/patients', {
-        name: newName.trim(),
-        phone: newPhone.trim() || undefined,
-        email: newEmail.trim() || undefined,
-        birth_date: newBirth || undefined,
+      const created = await api.post<PacienteJson>('/pacientes', {
+        nome: newName.trim(),
+        ...(newPhone.trim() ? { telefone: newPhone.trim() } : {}),
+        ...(newEmail.trim() ? { email: newEmail.trim() } : {}),
+        ...(newBirth ? { nascimento: newBirth } : {}),
       })
-      setSelectedPatient(created); setStep('details'); setCreating(false)
+      setSelectedPatient(paraPatient(created)); setStep('details'); setCreating(false)
     } catch (e: unknown) {
-      setPatientError(e instanceof Error ? e.message : 'Erro ao cadastrar')
+      setPatientError(fraseDoErro(e))
     } finally {
       setSavingPatient(false)
     }
@@ -169,7 +181,10 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
     if (!selectedPatient || !selectedDentistId || !selectedUnitId || !selectedChairId || !selectedProcedureId) return
     setSaving(true); setError(null)
     try {
-      const start_at = new Date(`${selectedDate}T${startTime}:00`).toISOString()
+      // O horário livre já vem com o instante certo; o digitado é no fuso da clínica.
+      const start_at = selectedSlot && format(parseISO(selectedSlot.start_at), 'HH:mm') === startTime
+        ? selectedSlot.start_at
+        : instanteNoFuso(selectedDate, startTime, fuso).toISOString()
       await onConfirm({
         patient_id:       selectedPatient.id,
         dentist_id:       selectedDentistId,
@@ -181,7 +196,7 @@ export function NewAppointmentModal({ open, onClose, onConfirm, dentists, initia
       })
       reset(); onClose()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao agendar')
+      setError(fraseDoErro(e))
     } finally {
       setSaving(false)
     }

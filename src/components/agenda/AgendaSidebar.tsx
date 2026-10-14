@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useEu } from '@/componentes/casca'
 import {
   format, addMonths, subMonths, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday,
@@ -45,12 +46,9 @@ export function AgendaSidebar({
 }: Props) {
   const [viewMonth, setViewMonth] = useState(new Date(selectedDate))
   const [reportOpen, setReportOpen] = useState(false)
-  const params = useParams()
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const accountId = params?.accountId as string
-  const userId = searchParams?.get('userId') ?? ''
-  const userQuery = userId ? `?userId=${userId}` : ''
+  // Os cadastros são do gestor: a recepção e o dentista não veem o atalho.
+  const gestor = useEu().usuario.papeis.gestor
 
   // Build calendar grid
   const monthStart = startOfMonth(viewMonth)
@@ -223,7 +221,7 @@ export function AgendaSidebar({
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Atalhos</p>
         <div className="space-y-1.5">
           <button
-            onClick={() => router.push(`/${accountId}/pacientes${userQuery}`)}
+            onClick={() => router.push('/pacientes')}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
           >
             <span className="text-sm">👥</span>
@@ -236,13 +234,15 @@ export function AgendaSidebar({
             <span className="text-sm">📊</span>
             Relatório do dia
           </button>
-          <button
-            onClick={() => router.push(`/${accountId}/configuracoes${userQuery}`)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
-          >
-            <span className="text-sm">⚙️</span>
-            Configurações
-          </button>
+          {gestor && (
+            <button
+              onClick={() => router.push('/configuracoes')}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[12px] font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+            >
+              <span className="text-sm">⚙️</span>
+              Configurações
+            </button>
+          )}
         </div>
       </div>
 

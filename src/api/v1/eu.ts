@@ -1,5 +1,6 @@
-import { createRoute } from '@hono/zod-openapi'
-import { erros, json } from '../apoio'
+import { createRoute, z } from '@hono/zod-openapi'
+import { CADENCIAS_DA_GRADE } from '@/compartilhado/vocabulario'
+import { corpoJson, erros, json } from '../apoio'
 import { exigirAcesso } from '../autenticacao'
 import { novoRoteador } from '../roteador'
 import { Eu } from './esquemas'
@@ -17,7 +18,20 @@ const verEu = createRoute({
   responses: { 200: json(Eu, 'O usuário e a clínica'), ...erros(401, 403) },
 })
 
+const alterarClinica = createRoute({
+  method: 'patch',
+  path: '/clinica',
+  tags: ['Cadastros'],
+  summary: 'Alterar a cadência da grade',
+  description: `Só o gestor, pela tela. De quanto em quanto tempo a agenda oferece um início: ${CADENCIAS_DA_GRADE.join(', ')} minutos. A duração continua a do procedimento.`,
+  request: corpoJson(z.object({ cadenciaMinutos: z.number().int() }), { cadenciaMinutos: 15 }),
+  responses: { 200: json(Eu, 'O usuário e a clínica, com a cadência nova'), ...erros(400, 401, 403) },
+})
+
 const r = novoRoteador()
 r.use('/eu', exigirAcesso)
+r.use('/clinica', exigirAcesso)
 
-export const rotasDoEu = r.openapi(verEu, async (c) => c.json(await c.var.casos.acesso.eu(c.var.acesso), 200))
+export const rotasDoEu = r
+  .openapi(verEu, async (c) => c.json(await c.var.casos.acesso.eu(c.var.acesso), 200))
+  .openapi(alterarClinica, async (c) => c.json(await c.var.casos.acesso.alterarCadencia(c.var.acesso, c.req.valid('json').cadenciaMinutos), 200))

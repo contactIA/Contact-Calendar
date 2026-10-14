@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { api } from '@/lib/client'
+import type { CadeiraJson } from '@/api/v1/esquemas'
+import { diaNoFuso, horaNoFuso, instanteNoFuso } from '@/compartilhado/fuso'
+import { useEu } from '@/componentes/casca'
+import { api, fraseDoErro } from '@/componentes/cliente/api'
 import { type Appointment } from '@/hooks/useAppointments'
 import { type Dentist } from '@/hooks/useDentists'
 
@@ -20,6 +23,7 @@ type Props = {
 
 export function RescheduleModal({ open, appointment, dentists, onClose, onSaved }: Props) {
   const { mounted, closing } = useAnimatedMount(open, 180)
+  const fuso = useEu().clinica.fusoHorario
   const [date, setDate]           = useState('')
   const [time, setTime]           = useState('')
   const [duration, setDuration]   = useState(30)
@@ -32,20 +36,24 @@ export function RescheduleModal({ open, appointment, dentists, onClose, onSaved 
   // Populate fields from appointment when it opens
   useEffect(() => {
     if (!open || !appointment) return
+    // A data e a hora no fuso da clínica, não no do computador.
     const start = new Date(appointment.start_at)
-    setDate(format(start, 'yyyy-MM-dd'))
-    setTime(format(start, 'HH:mm'))
+    setDate(diaNoFuso(start, fuso))
+    setTime(horaNoFuso(start, fuso))
     setDuration(appointment.duration_minutes)
     setDentistId(appointment.dentist?.id ?? '')
     setChairId(appointment.chair?.id ?? '')
     setError('')
-  }, [open, appointment])
+  }, [open, appointment, fuso])
 
-  // Load chairs when dentist changes
+  // As cadeiras da unidade da consulta: a remarcação não muda a unidade.
+  const unidadeId = appointment?.unit?.id
   useEffect(() => {
-    if (!dentistId) { setChairs([]); return }
-    api.get<Chair[]>('/api/admin/chairs').then(setChairs).catch(() => {})
-  }, [dentistId])
+    if (!unidadeId) return
+    api.get<{ cadeiras: CadeiraJson[] }>(`/cadeiras?unidadeId=${unidadeId}`)
+      .then(r => setChairs(r.cadeiras.filter(c => c.ativa).map(c => ({ id: c.id, name: c.nome, unit_id: c.unidadeId }))))
+      .catch(() => {})
+  }, [unidadeId])
 
   useEffect(() => {
     function h(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -64,20 +72,19 @@ export function RescheduleModal({ open, appointment, dentists, onClose, onSaved 
     if (!date || !time) { setError('Informe a data e o horário'); return }
     setSaving(true); setError('')
     try {
-      await api.patch(`/api/appointments/${appointment!.id}`, {
-        // date/time vêm dos inputs no fuso LOCAL (preenchidos com date-fns format,
-        // linhas 36-37). Concatenar um "Z" re-etiquetaria essa leitura local como
-        // UTC e jogava a consulta 3h para trás a cada salvamento. Parseia como
-        // local e converte para UTC de verdade — mesmo padrão do NewAppointmentModal.
-        start_at:         new Date(`${date}T${time}:00`).toISOString(),
-        duration_minutes: duration,
-        dentist_id:       dentistId || undefined,
-        chair_id:         chairId || undefined,
+      await api.post(`/consultas/${appointment!.id}/remarcar`, {
+        // A data e a hora dos campos são do fuso da clínica (o erro de 3 horas da
+        // remarcação antiga era ler no fuso do computador).
+        inicio:         instanteNoFuso(date, time, fuso).toISOString(),
+        duracaoMinutos: duration,
+        ...(dentistId ? { profissionalId: dentistId } : {}),
+        ...(chairId ? { cadeiraId: chairId } : {}),
+        versao:         appointment!.versao,
       })
       onSaved()
       onClose()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao remarcar')
+      setError(fraseDoErro(e))
     } finally {
       setSaving(false)
     }

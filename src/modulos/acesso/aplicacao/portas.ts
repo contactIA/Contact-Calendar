@@ -46,6 +46,7 @@ export interface RepositorioDeAcesso {
   /** Pelo id da clínica ou pelo companyId da conta na plataforma. */
   clinica(idOuCompanyId: string): Promise<ClinicaDeAcesso | null>
   clinicaDaSessao(id: string): Promise<ClinicaDaSessao | null>
+  definirCadencia(clinicaId: string, minutos: number): Promise<void>
   /** Pelo {{userId}} da plataforma, na clínica. */
   usuarioDaPlataforma(clinicaId: string, usuarioPlataformaId: string): Promise<UsuarioDeAcesso | null>
   usuario(clinicaId: string, usuarioId: string): Promise<UsuarioDeAcesso | null>

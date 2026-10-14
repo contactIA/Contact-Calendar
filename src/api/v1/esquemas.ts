@@ -45,6 +45,9 @@ export const Paciente = z
 
 export const PacienteEncontrado = Paciente.omit({ observacoes: true }).openapi('PacienteEncontrado')
 
+/** O paciente na lista da tela: com as observações e quando foi cadastrado. */
+export const PacienteDaLista = Paciente.extend({ criadoEm: Instante }).openapi('PacienteDaLista')
+
 export const Unidade = z
   .object({
     id: Id,
@@ -153,6 +156,7 @@ export type StatusDaConsultaJson = z.infer<typeof StatusDaConsulta>
 export type HorarioLivreJson = z.infer<typeof HorarioLivre>
 export type PacienteJson = z.infer<typeof Paciente>
 export type PacienteEncontradoJson = z.infer<typeof PacienteEncontrado>
+export type PacienteDaListaJson = z.infer<typeof PacienteDaLista>
 export type UnidadeJson = z.infer<typeof Unidade>
 export type CadeiraJson = z.infer<typeof Cadeira>
 export type EspecialidadeJson = z.infer<typeof Especialidade>
