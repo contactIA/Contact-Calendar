@@ -34,8 +34,8 @@ flowchart TD
 
 - **Um app Next.js 16** (App Router, React 19, TypeScript, Tailwind 4, Radix, zod),
   publicado na Vercel.
-- **Páginas** em `src/app/[accountId]/*`, componentes de cliente que chamam a
-  própria API com o token da sessão.
+- **Páginas** em `src/app/(agenda)/*`, componentes de cliente que chamam a API v1
+  com o token da sessão (fase 6).
 - **Rotas** em `src/app/api/**/route.ts`. Cada rota valida o corpo com zod,
   aplica a regra e grava no banco pelo cliente com `service_role`.
 - **Regras no banco:** horários livres (`get_available_slots`), conflito
@@ -50,7 +50,7 @@ flowchart TD
 
 | Quem | Como entra | Validade |
 |---|---|---|
-| Recepção, dentista, gestor (`admin`) | A plataforma abre `/{accountId}?token=...`. O token é emitido por `POST /api/auth/url`, que exige o segredo `WHITELABEL_AUTH_SECRET` e por isso só é chamado do lado do servidor | 8 horas |
+| Recepção, dentista, gestor | O item de menu da plataforma abre `/?companyId={{companyId}}&userId={{userId}}`, como no CRM. A agenda confere a origem (`EMBED_HOSTS`), acha a clínica pelo `companyId` e o usuário vinculado em `agenda.usuarios`, e dá um token assinado (`AGENDA_SEGREDO_SESSAO`) que fica na aba e vai no cabeçalho `X-Agenda-Sessao` | 12 horas |
 | Agente de IA e integrações | `Authorization: Bearer agd_...` na API nova (`/api/v1`), com a chave da tabela `agenda.chaves_api` | Até a chave ser revogada |
 
 - As chaves da IA ficam com hash bcrypt; o texto nunca é gravado.
@@ -58,10 +58,13 @@ flowchart TD
   `INTEGRATIONS_ENCRYPTION_KEY`).
 - Toda consulta ao banco filtra por `account_id`; o RLS fica ligado sem
   políticas, como segunda barreira.
-- **Hoje ninguém emite o token de pessoa.** A plataforma só abre a URL, e nada
-  chama `POST /api/auth/url` com o segredo. O `?userId=` também não entra: sem
-  `WHITELABEL_AUTH_SECRET` a rota responde 503, e com ele o navegador recebe
-  401 por não ter o segredo. Para usar a tela é preciso gerar o token à mão.
+- **As telas usam o login pelo item de menu** (fase 6 da migração). Os papéis
+  são relidos do banco a cada pedido, e `GET /api/v1/eu` dá o usuário, os papéis,
+  o fuso e a cadência da clínica. Quem cadastra os usuários da agenda fica para a
+  fase 8; até lá, eles entram no banco à mão (ou pelo `npm run banco:local`).
+- O login antigo (`POST /api/auth/url` com `WHITELABEL_AUTH_SECRET` e o
+  `?token=`) não é mais usado pelas telas; a rota continua até a equipe decidir
+  quando as rotas antigas saem.
 
 ### Papéis
 
@@ -130,19 +133,23 @@ reserva os 90 minutos inteiros. A cadência (de quanto em quanto tempo um iníci
 
 ## Telas
 
+As telas leem e gravam pela API v1 (fase 6). Entram por `/`, pelo item de menu.
+
 | Página | Rota | Quem |
 |---|---|---|
-| Agenda (dia, semana, lista) | `/{accountId}/agenda` | todos |
-| Pacientes | `/{accountId}/pacientes` | admin, recepção |
-| Configurações | `/{accountId}/configuracoes` | admin |
-| Cadastro de clínica | `/onboarding` | público |
+| Agenda (dia, semana, lista) | `/agenda` | todos; o dentista vê só a agenda dele e não agenda |
+| Pacientes | `/pacientes` | todos leem; a recepção e o gestor cadastram |
+| Configurações | `/configuracoes` | gestor |
+| Cadastro de clínica | `/onboarding` | público (código antigo) |
 
-Configurações tem as abas Geral, Unidades, Cadeiras, Procedimentos,
-Profissionais, Integrações (token, canal, modelos de confirmação e lembrete,
-etiquetas por status) e API Keys.
+Configurações tem as abas Geral (cadência da grade), Unidades, Cadeiras,
+Especialidades, Procedimentos, Profissionais (unidades com a prioridade,
+especialidades e a semana de horários) e Chaves. A integração com a plataforma de
+mensagens volta na fase 7.
 
-**Paciente 360** (`GET /api/patients/{id}/360` e `/timeline`): cadastro e
-histórico de consultas do paciente. Só existe o backend; a tela não foi feita.
+**Paciente 360**: na API nova, `GET /api/v1/pacientes/{id}` traz o cadastro, as
+consultas e a última visita. As rotas antigas (`/api/patients/{id}/360` e
+`/timeline`) continuam, sem tela.
 
 ## Banco de dados
 
@@ -188,6 +195,8 @@ O modelo está em `.env.example`.
 ```bash
 # Código novo
 DATABASE_URL=                         # Postgres do projeto do CRM (pooler), esquema agenda
+AGENDA_SEGREDO_SESSAO=                # 32+ caracteres aleatórios; assina a sessão da tela
+EMBED_HOSTS=                          # hosts da plataforma que abrem a agenda (ex.: app.fluxodonto.com)
 
 # Código antigo
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
@@ -211,8 +220,14 @@ npm run worker       # o processo das tarefas em segundo plano
 npm run verificar    # tipos, lint, testes e regra de dependência
 npm run build
 npm run db:gerar     # gera a migração do esquema agenda em ./drizzle
+npm run banco:local  # banco local (PGlite na porta 5440) com uma clínica de demonstração
 ```
 
+- **Banco local:** `npm run banco:local` aplica as migrações, semeia a clínica de
+  demonstração (gestora, recepção e dentista, com consultas de hoje e de amanhã),
+  escreve o `.env.local` e mostra os links de entrada de cada pessoa. Com ele no
+  ar, `npx next dev -p 3310` e abra um dos links. `-- --do-zero` apaga e semeia
+  de novo.
 - **API nova:** a referência fica em `/api/docs` e o contrato em
   `/api/openapi.json`. As rotas novas respondem em `/api/v1`; as antigas
   continuam nos endereços delas até saírem.
@@ -237,7 +252,12 @@ src/
 ├── compartilhado/       erros de domínio e funções puras
 ├── worker/              processo das tarefas em segundo plano
 ├── composicao.ts        liga cada porta ao seu adaptador
+├── componentes/         entrada pelo menu, casca da sessão e cliente da API v1
+├── app/page.tsx         a entrada pelo item de menu
+├── app/(agenda)/        agenda, pacientes e configurações, dentro da casca
+├── proxy.ts             CSP frame-ancestors só para os hosts da plataforma
 └── app/api/[[...rota]]/ entrega /api/* ao Hono
+scripts/banco-local.ts   banco local de desenvolvimento
 testes/                  testes de integração (API e banco no PGlite)
 drizzle/                 migrações do esquema agenda
 ```
@@ -247,7 +267,6 @@ Código antigo (sai fase a fase):
 ```
 src/
 ├── app/
-│   ├── [accountId]/         agenda, pacientes, configuracoes (o layout faz o login)
 │   ├── onboarding/          cadastro público de clínica
 │   └── api/
 │       ├── appointments/    consultas, status, conflitos
@@ -257,9 +276,9 @@ src/
 │       ├── helena/          abrir e transferir conversa
 │       └── ...              slots, dentists, units, procedures, schedule-blocks
 ├── components/
-│   ├── agenda/              AgendaShell, visões, modais, popover, relatório do dia
-│   └── config/              aba de integração
-├── hooks/                   dados da agenda e login
+│   ├── agenda/              AgendaShell, visões, modais, popover, relatório do dia (sobre a API v1)
+│   └── config/              aba de integração (sem uso até a fase 7)
+├── hooks/                   dados da agenda: traduzem a API v1 para os tipos das telas (daApi.ts)
 ├── lib/                     auth, api (withAuth), helena (cliente da plataforma), supabase, tz
 └── types/                   database.ts (gerado), patient360.ts
 ```

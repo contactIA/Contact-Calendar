@@ -15,9 +15,9 @@ incremental sem convivência com dados vivos.
 | 3 | Esquema `agenda`: o [modelo de dados](modelo-de-dados.md) aprovado, as migrações `0000` e `0001` (não aplicadas) e os testes de banco (sobreposição por profissional, cadeira e paciente, mesma clínica nas chaves) | feita |
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | feita |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | feita (ver "Decidido na construção (fase 5)") |
-| 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova | grande |
-| 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete | médio |
-| 8 | Acesso e deploy: login pelo item de menu, o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
+| 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova, com o login pelo item de menu trazido da fase 8 | feita (ver "Decidido na construção (fase 6)") |
+| 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete. Volta também a conversa com o paciente na plataforma, na consulta, e a aba de integração das configurações | médio |
+| 8 | Acesso e deploy: quem cadastra os usuários da agenda (e o superadmin, como no CRM), o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
 | 9 | Corte e documentação: recriar as clínicas reais, desligar a Vercel, pausar o Supabase antigo e publicar a documentação da API no ReadMe | pequeno |
 
 ## Regras da migração
@@ -91,6 +91,47 @@ Regras que a agenda antiga não tinha, ou tinha diferente, e que entraram em
    (`/api/agent/*` e `/api/auth/ai`) saíram: a única chave de IA nunca foi usada.
 9. **As rotas antigas da tela ficam até a fase 6**, porque as telas antigas ainda
    as chamam. Saem junto com elas.
+
+## Decidido na construção (fase 6, a confirmar com a equipe)
+
+1. **O login pelo item de menu veio da fase 8 para cá**, porque a chave da API não
+   marca chegada nem mexe nos cadastros: copiado do CRM, com o token HMAC de 12 h
+   no `sessionStorage` da aba e o cabeçalho `X-Agenda-Sessao`
+   (`AGENDA_SEGREDO_SESSAO` e `EMBED_HOSTS` no `.env`). A página `/` é a entrada;
+   as telas ficam em `/agenda`, `/pacientes` e `/configuracoes`, sem o
+   `accountId` na URL. `GET /v1/eu` dá os papéis, o fuso e a cadência. Ficam para
+   a fase 8 quem cadastra os usuários e o superadmin.
+2. **As telas antigas foram aproveitadas**, com o visual delas: os hooks traduzem
+   a API v1 para os tipos que as telas já usavam (`src/hooks/daApi.ts`). Quando
+   as telas forem reescritas no padrão do CRM, a tradução sai.
+3. **A busca da agenda é pelo paciente**: acha os pacientes pelo nome ou telefone
+   e traz as consultas deles. A API não tem busca solta de consultas.
+4. **A Lista mostra de hoje a seis semanas** (o máximo que a API devolve de uma
+   vez), com o status e o procedimento filtrados na tela.
+5. **A lista de pacientes ganhou páginas**: `GET /v1/pacientes` sem `busca` (ou
+   com menos de 2 letras) lista todos por nome, com `pagina`, `porPagina` e o
+   `total`, e traz as observações e a data de cadastro.
+6. **A cadência da grade tem rota**: `PATCH /v1/clinica`, só o gestor, com os
+   valores de `CADENCIAS_DA_GRADE` (o 45 da antiga saiu).
+7. **Por papel, na tela**: o dentista vê só a agenda dele, não agenda e só marca a
+   chegada e o fim das consultas dele; as Configurações são só do gestor; o
+   cadastro de paciente é da recepção e do gestor. A agendada também ganhou o
+   check-in direto (a regra da fase 4 já deixava).
+8. **Nas Configurações**: a especialidade virou cadastro (aba nova) e o
+   procedimento escolhe uma da lista; o profissional marca as unidades onde
+   atende, com a prioridade, e o "excluir" virou desativar; a semana de horários
+   aceita vários intervalos por dia; a chave tem tipo (agente de IA ou
+   integração) e permissão de gravar, e só se revoga (não há liga e desliga).
+9. **Os horários das telas são do fuso da clínica** no que vai para a API (o
+   agendar, o remarcar, o dia e a semana pedidos). O que a tela mostra continua
+   no relógio do computador, que no Brasil é o mesmo da clínica.
+10. **As rotas antigas ainda não saíram.** A regra 9 da fase 5 as tirava aqui, mas
+    na fase 0 a equipe pediu para manter o Paciente 360 e as rotas sem chamador.
+    Nenhuma tela as chama mais; falta a equipe decidir se saem agora ou no corte
+    (fase 9). O onboarding público continua, com as rotas dele.
+11. **A conexão parada é devolvida ao pooler** (`idle_timeout` de 20 s) e a fila
+    tem 2 conexões próprias, como no CRM depois de 2026-10-14: a agenda vai
+    dividir o pooler em modo sessão com ele.
 
 ## Decidido com a equipe (2026-10-07)
 

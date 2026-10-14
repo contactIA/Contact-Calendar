@@ -6,7 +6,6 @@ import nextTs from "eslint-config-next/typescript";
 // Os erros que ele já tinha viram aviso, para o CI valer desde já; o código novo
 // segue as regras inteiras.
 const LEGADO = [
-  "src/app/\\[accountId\\]/**",
   "src/app/onboarding/**",
   "src/app/api/{admin,agent,appointments,auth,dentists,helena,onboarding,patients,procedures,schedule-blocks,slots,units}/**",
   "src/components/**",

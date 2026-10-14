@@ -24,7 +24,12 @@ function criarBanco(): Banco {
 
   // prepare: false porque o pooler do Supabase em modo transação não aceita
   // prepared statements. Funciona também no modo sessão.
-  const cliente = postgres(url, { prepare: false, max: Number(process.env.DATABASE_MAX_CONEXOES) || 10 })
+  //
+  // idle_timeout: a conexão parada há 20 s é devolvida, como no CRM. No modo
+  // sessão, cada conexão aberta ocupa uma das poucas vagas do pooler, mesmo
+  // ociosa, e a agenda divide o pooler com o CRM: em 2026-10-14 as vagas presas
+  // do CRM travaram o deploy dele (EMAXCONNSESSION).
+  const cliente = postgres(url, { prepare: false, max: Number(process.env.DATABASE_MAX_CONEXOES) || 10, idle_timeout: 20 })
   return drizzle(cliente, { schema: esquema }) as unknown as Banco
 }
 
