@@ -125,3 +125,40 @@ export const Chave = z
     revogadaEm: Instante.nullable(),
   })
   .openapi('Chave')
+
+/** Quem está usando a tela, e a clínica (GET /v1/eu). */
+export const Eu = z
+  .object({
+    usuario: z.object({
+      id: Id,
+      nome: z.string(),
+      papeis: z.object({ gestor: z.boolean(), recepcao: z.boolean(), dentista: z.boolean() }),
+      profissionalId: Id.nullable().openapi({ description: 'O profissional ligado ao usuário, quando ele é dentista' }),
+      unidades: z.array(Id).openapi({ description: 'As unidades vinculadas; vazia é todas' }),
+    }),
+    clinica: z.object({
+      id: Id,
+      companyId: Id,
+      nome: z.string(),
+      fusoHorario: z.string().openapi({ example: 'America/Sao_Paulo' }),
+      cadenciaMinutos: z.number().int().openapi({ description: 'De quanto em quanto tempo a grade oferece um início', example: 30 }),
+    }),
+  })
+  .openapi('Eu')
+
+// Os mesmos formatos, como tipos para a tela. A tela importa só os tipos
+// (`import type`): o zod não vai para o navegador.
+export type ConsultaJson = z.infer<typeof Consulta>
+export type StatusDaConsultaJson = z.infer<typeof StatusDaConsulta>
+export type HorarioLivreJson = z.infer<typeof HorarioLivre>
+export type PacienteJson = z.infer<typeof Paciente>
+export type PacienteEncontradoJson = z.infer<typeof PacienteEncontrado>
+export type UnidadeJson = z.infer<typeof Unidade>
+export type CadeiraJson = z.infer<typeof Cadeira>
+export type EspecialidadeJson = z.infer<typeof Especialidade>
+export type ProcedimentoJson = z.infer<typeof Procedimento>
+export type ProfissionalJson = z.infer<typeof Profissional>
+export type ExpedienteJson = z.infer<typeof Expediente>
+export type BloqueioJson = z.infer<typeof Bloqueio>
+export type ChaveJson = z.infer<typeof Chave>
+export type EuJson = z.infer<typeof Eu>

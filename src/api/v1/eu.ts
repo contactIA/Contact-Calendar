@@ -1,0 +1,23 @@
+import { createRoute } from '@hono/zod-openapi'
+import { erros, json } from '../apoio'
+import { exigirAcesso } from '../autenticacao'
+import { novoRoteador } from '../roteador'
+import { Eu } from './esquemas'
+
+// Quem está usando a tela. A página pede isto ao abrir, com o token da sessão que
+// recebeu pelo item de menu: os papéis decidem o que ela mostra, e o fuso e a
+// cadência da clínica montam a grade. A chave da API não tem "eu".
+
+const verEu = createRoute({
+  method: 'get',
+  path: '/eu',
+  tags: ['Sistema'],
+  summary: 'Quem está usando a tela',
+  description: 'Só com a sessão da tela (cabeçalho `X-Agenda-Sessao`), que a página recebe ao abrir pelo item de menu da plataforma.',
+  responses: { 200: json(Eu, 'O usuário e a clínica'), ...erros(401, 403) },
+})
+
+const r = novoRoteador()
+r.use('/eu', exigirAcesso)
+
+export const rotasDoEu = r.openapi(verEu, async (c) => c.json(await c.var.casos.acesso.eu(c.var.acesso), 200))
