@@ -5,6 +5,63 @@ quase não tem uso (em 2026-10-07: 11 contas de teste, nenhuma consulta futura,
 e o login de pessoa não funciona em produção), então a migração é uma reescrita
 incremental sem convivência com dados vivos.
 
+## Onde paramos (2026-10-14)
+
+**Feito:** fases 0 a 6, no ramo `arquitetura` (publicado no GitHub, último commit
+`715ffd0`). O ramo **não** foi mesclado na `master`, porque a `master` publica na
+Vercel com o código antigo. As migrações do esquema `agenda` não foram aplicadas em
+banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 a 6
+(#223 a #229) estão em "Em revisão".
+
+**Para retomar:**
+
+1. `npm install`, depois `npm run banco:local`. Ele sobe o PGlite na porta 5440
+   com a clínica de demonstração e escreve o `.env.local`.
+2. `npx next dev -p 3310` e abra o link de uma das pessoas, que o banco local
+   mostra ao subir:
+
+   | Pessoa | Papel | Entrada |
+   |---|---|---|
+   | Ana Paula Mendes | gestora | `http://localhost:3310/?companyId=7a1c2b3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d&userId=a1111111-1111-4111-8111-111111111111` |
+   | Rita Alves | recepção | `...&userId=b2222222-2222-4222-8222-222222222222` |
+   | Dra. Carla Nunes | dentista | `...&userId=c3333333-3333-4333-8333-333333333333` |
+
+3. `npm run verificar` e `npm run build` antes de cada commit.
+
+**Decisões pendentes, com a equipe (nesta ordem):**
+
+1. **As rotas antigas da tela** (`src/app/api/{admin,appointments,patients,...}`)
+   saem agora ou no corte (fase 9)? Nenhuma tela as chama mais. Na fase 0, a equipe
+   pediu para manter o Paciente 360 e as rotas sem chamador.
+2. **As regras decididas na construção:** 10 da fase 4, 9 da fase 5 e 11 da fase 6
+   (seções abaixo).
+3. **Onde a agenda roda** (#231): TurboCloud, para onde o DNS de
+   `agenda.contactia.com.br` já aponta, ou a VPS do CRM.
+4. **Quem cadastra os usuários da agenda.** Ainda não há rota nem tela; hoje eles
+   entram no banco à mão. Também falta o superadmin, como o do CRM.
+5. **Que clínica usa esta agenda.** O CRM agora agenda direto na Clinicorp (ADR 0015
+   do CRM, Etapa 17 do Project). A agenda própria serve à clínica sem prontuário,
+   ou às duas? Isso decide a ordem das fases 7 e 8.
+
+**Próximo passo de código:** a fase 7 (#230), a ligação com o CRM:
+
+- a caixa de saída gravada na mesma transação e entregue pelo worker;
+- os webhooks de entrada (`card.movido`), ignorando os da própria agenda;
+- a escolha do lembrete sincronizada;
+- no CRM, o `POST /cards` com a data da consulta numa chamada só e a rota da chave
+  para a escolha do lembrete;
+- voltam a conversa com o paciente na plataforma, no popover da consulta, e a aba
+  de integração das configurações.
+
+**Atenções:**
+
+- **O pooler do Supabase em modo sessão é dividido com o CRM** (15 vagas no plano
+  Micro). Em 2026-10-14 ele encheu e travou o deploy do CRM. Os dois agora devolvem
+  a conexão parada; antes de pôr a agenda no ar, confira as vagas (ou suba o
+  "Pool Size" para até 24).
+- **O que a tela mostra** continua no relógio do computador. O que vai para a API é
+  no fuso da clínica.
+
 ## Fases
 
 | Fase | O que entra | Tamanho |
