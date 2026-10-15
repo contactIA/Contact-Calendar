@@ -36,15 +36,16 @@ flowchart TD
   publicado na Vercel.
 - **Páginas** em `src/app/(agenda)/*`, componentes de cliente que chamam a API v1
   com o token da sessão (fase 6).
-- **Rotas** em `src/app/api/**/route.ts`. Cada rota valida o corpo com zod,
-  aplica a regra e grava no banco pelo cliente com `service_role`.
+- **Rotas** da API v1 em `src/api/v1`, entregues ao Hono por
+  `src/app/api/[[...rota]]`. Das antigas, só ficaram as do onboarding público,
+  que gravam no Supabase antigo pelo cliente com `service_role`.
 - **Regras no banco:** horários livres (`get_available_slots`), conflito
   (`check_appointment_conflict`), busca sem acento e telefone
   (`find_patients_by_phone`), e as restrições `EXCLUDE` que impedem duas
   consultas no mesmo horário.
-- **Mensagens:** ao agendar, remarcar, cancelar ou mudar o status, a rota manda a
-  confirmação, agenda ou cancela o lembrete e etiqueta o contato na plataforma.
-  Tudo em melhor esforço: se a plataforma falhar, a consulta continua gravada.
+- **Mensagens:** as rotas antigas mandavam a confirmação e o lembrete e
+  etiquetavam o contato na plataforma. Elas saíram em outubro de 2026; as
+  mensagens voltam na fase 7, pela caixa de saída e pelo CRM.
 
 ## Acesso
 
@@ -53,18 +54,15 @@ flowchart TD
 | Recepção, dentista, gestor | O item de menu da plataforma abre `/?companyId={{companyId}}&userId={{userId}}`, como no CRM. A agenda confere a origem (`EMBED_HOSTS`), acha a clínica pelo `companyId` e o usuário vinculado em `agenda.usuarios`, e dá um token assinado (`AGENDA_SEGREDO_SESSAO`) que fica na aba e vai no cabeçalho `X-Agenda-Sessao` | 12 horas |
 | Agente de IA e integrações | `Authorization: Bearer agd_...` na API nova (`/api/v1`), com a chave da tabela `agenda.chaves_api` | Até a chave ser revogada |
 
-- As chaves da IA ficam com hash bcrypt; o texto nunca é gravado.
-- O token da plataforma de cada clínica fica cifrado (AES-256-GCM,
-  `INTEGRATIONS_ENCRYPTION_KEY`).
+- As chaves ficam com hash sha256, como no CRM; o texto nunca é gravado.
 - Toda consulta ao banco filtra por `account_id`; o RLS fica ligado sem
   políticas, como segunda barreira.
 - **As telas usam o login pelo item de menu** (fase 6 da migração). Os papéis
   são relidos do banco a cada pedido, e `GET /api/v1/eu` dá o usuário, os papéis,
   o fuso e a cadência da clínica. Quem cadastra os usuários da agenda fica para a
   fase 8; até lá, eles entram no banco à mão (ou pelo `npm run banco:local`).
-- O login antigo (`POST /api/auth/url` com `WHITELABEL_AUTH_SECRET` e o
-  `?token=`) não é mais usado pelas telas; a rota continua até a equipe decidir
-  quando as rotas antigas saem.
+- O login antigo (`POST /api/auth/url` com `WHITELABEL_AUTH_SECRET`) saiu com as
+  rotas antigas.
 
 ### Papéis
 
@@ -148,8 +146,7 @@ especialidades e a semana de horários) e Chaves. A integração com a plataform
 mensagens volta na fase 7.
 
 **Paciente 360**: na API nova, `GET /api/v1/pacientes/{id}` traz o cadastro, as
-consultas e a última visita. As rotas antigas (`/api/patients/{id}/360` e
-`/timeline`) continuam, sem tela.
+consultas e a última visita.
 
 ## Banco de dados
 
@@ -198,14 +195,10 @@ DATABASE_URL=                         # Postgres do projeto do CRM (pooler), esq
 AGENDA_SEGREDO_SESSAO=                # 32+ caracteres aleatórios; assina a sessão da tela
 EMBED_HOSTS=                          # hosts da plataforma que abrem a agenda (ex.: app.fluxodonto.com)
 
-# Código antigo
+# Código antigo (só o onboarding público)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=            # só no servidor
 JWT_SECRET=                           # openssl rand -base64 32
-WHITELABEL_AUTH_SECRET=               # o mesmo que a plataforma usa em /api/auth/url
-INTEGRATIONS_ENCRYPTION_KEY=          # cifra o token da plataforma de cada clínica
-HELENA_BASE_URL=                      # opcional; padrão https://api.wts.chat
-FLUXODONTO_URL=                       # opcional; endereço das conversas; padrão https://app.fluxodonto.com
 NEXT_PUBLIC_APP_URL=                  # opcional; endereço público do app, usado no onboarding
 ```
 
@@ -229,8 +222,8 @@ npm run banco:local  # banco local (PGlite na porta 5440) com uma clínica de de
   ar, `npx next dev -p 3310` e abra um dos links. `-- --do-zero` apaga e semeia
   de novo.
 - **API nova:** a referência fica em `/api/docs` e o contrato em
-  `/api/openapi.json`. As rotas novas respondem em `/api/v1`; as antigas
-  continuam nos endereços delas até saírem.
+  `/api/openapi.json`. As rotas novas respondem em `/api/v1`; das antigas, só
+  ficaram as quatro do onboarding público.
 - **Testes:** vitest. Os de banco (`testes/banco/`) rodam num Postgres dentro do
   processo (PGlite), com as migrações reais e as extensões `btree_gist` e
   `unaccent`.
@@ -269,16 +262,10 @@ src/
 ├── app/
 │   ├── onboarding/          cadastro público de clínica
 │   └── api/
-│       ├── appointments/    consultas, status, conflitos
-│       ├── patients/        pacientes, Paciente 360, vínculo com o contato
-│       ├── admin/           cadastros da clínica, integração, chaves
-│       ├── auth/            login pela plataforma
-│       ├── helena/          abrir e transferir conversa
-│       └── ...              slots, dentists, units, procedures, schedule-blocks
-├── components/
-│   ├── agenda/              AgendaShell, visões, modais, popover, relatório do dia (sobre a API v1)
-│   └── config/              aba de integração (sem uso até a fase 7)
+│       ├── onboarding/      cria a clínica e o gestor
+│       └── admin/           o POST de unidade, dentista e procedimento que o onboarding chama
+├── components/agenda/       AgendaShell, visões, modais, popover, relatório do dia (sobre a API v1)
 ├── hooks/                   dados da agenda: traduzem a API v1 para os tipos das telas (daApi.ts)
-├── lib/                     auth, api (withAuth), helena (cliente da plataforma), supabase, tz
-└── types/                   database.ts (gerado), patient360.ts
+├── lib/                     o que o onboarding usa: auth, api (withAuth), client, rateLimit, supabase
+└── types/                   database.ts (gerado)
 ```

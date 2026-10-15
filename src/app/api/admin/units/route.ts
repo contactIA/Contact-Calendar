@@ -8,18 +8,7 @@ const createSchema = z.object({
   phone:   z.string().max(20).optional(),
 })
 
-// GET /api/admin/units
-export const GET = withAuth(async (_req, ctx) => {
-  const { data, error } = await supabaseAdmin
-    .from('units')
-    .select('id, name, address, phone, is_active, created_at')
-    .eq('account_id', ctx.user.accountId)
-    .order('name')
-
-  if (error) return err(error.message, 500)
-  return ok(data)
-}, ['admin'])
-
+// O onboarding público é quem chama (src/app/onboarding).
 // POST /api/admin/units
 export const POST = withAuth(async (req, ctx) => {
   const body = await req.json().catch(() => null)

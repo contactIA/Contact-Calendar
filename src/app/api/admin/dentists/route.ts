@@ -14,22 +14,7 @@ const createSchema = z.object({
   color:     z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#3b82f6'),
 })
 
-// GET /api/admin/dentists
-export const GET = withAuth(async (_req, ctx) => {
-  const { data, error } = await supabaseAdmin
-    .from('dentists')
-    .select(`
-      id, cro, specialty, color, created_at,
-      user:users(id, name, email, external_id, role, unit_id),
-      units:dentist_units(unit_id, priority, unit:units(id, name))
-    `)
-    .eq('account_id', ctx.user.accountId)
-    .order('created_at')
-
-  if (error) return err(error.message, 500)
-  return ok(data)
-}, ['admin'])
-
+// O onboarding público é quem chama (src/app/onboarding).
 // POST /api/admin/dentists — creates user + dentist in one step
 export const POST = withAuth(async (req, ctx) => {
   const body = await req.json().catch(() => null)

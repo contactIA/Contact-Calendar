@@ -28,20 +28,29 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
 
 3. `npm run verificar` e `npm run build` antes de cada commit.
 
+**Decidido com a equipe em 2026-10-15:**
+
+- **As rotas antigas da tela saíram** (37 rotas, o login antigo, o cliente da
+  plataforma e o que só elas usavam). Ficaram as quatro que o onboarding público
+  chama: `POST /api/onboarding/account` e o `POST` de `admin/units`,
+  `admin/dentists` e `admin/procedures`. Para consultar o código que saiu, o
+  último commit com ele é `81c9d39`.
+- **A agenda própria recebe todas as consultas, mesmo as marcadas na Clinicorp.**
+  A clínica que tem prontuário continua com a agenda; o que o CRM marca na
+  Clinicorp também aparece aqui. A fase 7 continua a próxima.
+
 **Decisões pendentes, com a equipe (nesta ordem):**
 
-1. **As rotas antigas da tela** (`src/app/api/{admin,appointments,patients,...}`)
-   saem agora ou no corte (fase 9)? Nenhuma tela as chama mais. Na fase 0, a equipe
-   pediu para manter o Paciente 360 e as rotas sem chamador.
-2. **As regras decididas na construção:** 10 da fase 4, 9 da fase 5 e 11 da fase 6
+1. **As regras decididas na construção:** 10 da fase 4, 9 da fase 5 e 11 da fase 6
    (seções abaixo).
-3. **Onde a agenda roda** (#231): TurboCloud, para onde o DNS de
+2. **Onde a agenda roda** (#231): TurboCloud, para onde o DNS de
    `agenda.contactia.com.br` já aponta, ou a VPS do CRM.
-4. **Quem cadastra os usuários da agenda.** Ainda não há rota nem tela; hoje eles
+3. **Quem cadastra os usuários da agenda.** Ainda não há rota nem tela; hoje eles
    entram no banco à mão. Também falta o superadmin, como o do CRM.
-5. **Que clínica usa esta agenda.** O CRM agora agenda direto na Clinicorp (ADR 0015
-   do CRM, Etapa 17 do Project). A agenda própria serve à clínica sem prontuário,
-   ou às duas? Isso decide a ordem das fases 7 e 8.
+4. **O onboarding público** grava no Supabase antigo e, no fim, manda para
+   `/{accountId}`, uma página que não existe mais. Ele funciona só na `master`. Na
+   fase 8, ou ele é reescrito sobre a API v1 (junto com o cadastro dos usuários),
+   ou sai.
 
 **Próximo passo de código:** a fase 7 (#230), a ligação com o CRM:
 
@@ -184,8 +193,8 @@ Regras que a agenda antiga não tinha, ou tinha diferente, e que entraram em
    no relógio do computador, que no Brasil é o mesmo da clínica.
 10. **As rotas antigas ainda não saíram.** A regra 9 da fase 5 as tirava aqui, mas
     na fase 0 a equipe pediu para manter o Paciente 360 e as rotas sem chamador.
-    Nenhuma tela as chama mais; falta a equipe decidir se saem agora ou no corte
-    (fase 9). O onboarding público continua, com as rotas dele.
+    Nenhuma tela as chama mais. Em 2026-10-15 a equipe decidiu tirá-las; ficaram
+    só as do onboarding público.
 11. **A conexão parada é devolvida ao pooler** (`idle_timeout` de 20 s) e a fila
     tem 2 conexões próprias, como no CRM depois de 2026-10-14: a agenda vai
     dividir o pooler em modo sessão com ele.

@@ -9,18 +9,7 @@ const createSchema = z.object({
   required_specialty:  z.string().max(100).optional(),
 })
 
-// GET /api/admin/procedures
-export const GET = withAuth(async (_req, ctx) => {
-  const { data, error } = await supabaseAdmin
-    .from('procedures')
-    .select('id, name, duration_minutes, color, required_specialty, is_active, created_at')
-    .eq('account_id', ctx.user.accountId)
-    .order('name')
-
-  if (error) return err(error.message, 500)
-  return ok(data)
-}, ['admin'])
-
+// O onboarding público é quem chama (src/app/onboarding).
 // POST /api/admin/procedures
 export const POST = withAuth(async (req, ctx) => {
   const body = await req.json().catch(() => null)

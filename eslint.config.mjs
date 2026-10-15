@@ -7,7 +7,7 @@ import nextTs from "eslint-config-next/typescript";
 // segue as regras inteiras.
 const LEGADO = [
   "src/app/onboarding/**",
-  "src/app/api/{admin,agent,appointments,auth,dentists,helena,onboarding,patients,procedures,schedule-blocks,slots,units}/**",
+  "src/app/api/{admin,onboarding}/**",
   "src/components/**",
   "src/hooks/**",
   "src/lib/**",
