@@ -254,7 +254,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     if (telefone && clinica.sincronizarContatos) {
       await r.caixa.enfileirar([
         { clinicaId: clinica.id, pacienteId: paciente.id, destino: 'plataforma', tipo: 'sincronizar_contato', dados: { telefone, nome: paciente.nome } },
-      ])
+      ], agora)
     }
     return paciente
   }
@@ -361,7 +361,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     const avisos = avisosDaMudanca(consulta.status, para)
     if (avisos.length) {
       const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
-      await r.caixa.enfileirar(avisosConfigurados(avisos, clinica, gravada, paciente, await contextoDosAvisos(r, acesso, gravada)))
+      await r.caixa.enfileirar(avisosConfigurados(avisos, clinica, gravada, paciente, await contextoDosAvisos(r, acesso, gravada)), agora)
     }
     return gravada
   }
@@ -413,7 +413,8 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     ])
     const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
     await r.caixa.enfileirar(
-      avisosConfigurados(avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome })
+      avisosConfigurados(avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
+      agora
     )
     return gravada
   }
@@ -529,7 +530,8 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
           },
         ])
         await r.caixa.enfileirar(
-          avisosConfigurados(avisosDoAgendamento(), clinica, consulta, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome })
+          avisosConfigurados(avisosDoAgendamento(), clinica, consulta, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
+          agora
         )
         return { consulta, paciente }
       })
@@ -654,7 +656,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
         if (novo.telefone && clinica.sincronizarContatos && (mudou.includes('nome') || mudou.includes('telefone'))) {
           await r.caixa.enfileirar([
             { clinicaId: clinica.id, pacienteId: novo.id, destino: 'plataforma', tipo: 'sincronizar_contato', dados: { telefone: novo.telefone, nome: novo.nome } },
-          ])
+          ], agora)
         }
         return novo
       })

@@ -118,7 +118,8 @@ export interface Repositorios {
     registrar(eventos: NovoEvento[]): Promise<void>
   }
   caixa: {
-    enfileirar(avisos: NovoAviso[]): Promise<void>
+    /** Os avisos nascem vencidos no instante do caso de uso. */
+    enfileirar(avisos: NovoAviso[], agora: Date): Promise<void>
   }
 }
 

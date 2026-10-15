@@ -279,8 +279,7 @@ export function repositoriosPostgres(db: Banco): Repositorios {
               observacoes: c.observacoes,
               cancelada_em: c.canceladaEm,
               motivo_cancelamento: c.motivoCancelamento,
-              crm_card_id: c.crmCardId,
-              lembrete_mensagem_id: c.lembreteMensagemId,
+              // crm_card_id e lembrete_mensagem_id são do worker (fase 7): a tela não os regrava.
               versao: sql`${consultas.versao} + 1`,
             })
             .where(and(eq(consultas.clinica_id, c.clinicaId), eq(consultas.id, c.id), eq(consultas.versao, c.versao)))
@@ -379,7 +378,7 @@ export function repositoriosPostgres(db: Banco): Repositorios {
     },
 
     caixa: {
-      async enfileirar(avisos) {
+      async enfileirar(avisos, agora) {
         if (!avisos.length) return
         await db.insert(caixaDeSaida).values(
           avisos.map((a) => ({
@@ -389,6 +388,8 @@ export function repositoriosPostgres(db: Banco): Repositorios {
             consulta_id: a.consultaId ?? null,
             paciente_id: a.pacienteId ?? null,
             dados: a.dados,
+            criado_em: agora,
+            proxima_tentativa_em: agora,
           }))
         )
       },

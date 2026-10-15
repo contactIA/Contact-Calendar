@@ -5,10 +5,10 @@ quase não tem uso (em 2026-10-07: 11 contas de teste, nenhuma consulta futura,
 e o login de pessoa não funciona em produção), então a migração é uma reescrita
 incremental sem convivência com dados vivos.
 
-## Onde paramos (2026-10-14)
+## Onde paramos (2026-10-15)
 
-**Feito:** fases 0 a 6, no ramo `arquitetura` (publicado no GitHub, último commit
-`715ffd0`). O ramo **não** foi mesclado na `master`, porque a `master` publica na
+**Feito:** fases 0 a 6, a saída das rotas antigas e a parte 7a da fase 7, no ramo
+`arquitetura`. O ramo **não** foi mesclado na `master`, porque a `master` publica na
 Vercel com o código antigo. As migrações do esquema `agenda` não foram aplicadas em
 banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 a 6
 (#223 a #229) estão em "Em revisão".
@@ -38,11 +38,22 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
 - **A agenda própria recebe todas as consultas, mesmo as marcadas na Clinicorp.**
   A clínica que tem prontuário continua com a agenda; o que o CRM marca na
   Clinicorp também aparece aqui. A fase 7 continua a próxima.
+- **A consulta que o CRM marca fora da agenda** (a CRC na Clinicorp, o botão, a
+  IA) entra sozinha quando o dentista já está ligado a um profissional da agenda
+  e o horário cabe numa cadeira. Se não, vai para a lista "Vindas do CRM", onde a
+  recepção escolhe o profissional e a cadeira; a agenda guarda o vínculo do
+  dentista para as próximas.
+- **A agenda acompanha o card:** o que muda depois no CRM (cancelou, faltou,
+  compareceu, remarcou) muda a consulta ligada, quando a mudança é de uma pessoa
+  ou de outra integração. Os movimentos da própria agenda são ignorados.
+- **O diálogo de agendar do CRM sobre os horários desta agenda** (como já faz com
+  a Clinicorp) vira uma fase própria, depois da 7. Até lá, essas consultas entram
+  pela lista "Vindas do CRM".
 
 **Decisões pendentes, com a equipe (nesta ordem):**
 
-1. **As regras decididas na construção:** 10 da fase 4, 9 da fase 5 e 11 da fase 6
-   (seções abaixo).
+1. **As regras decididas na construção:** 10 da fase 4, 9 da fase 5, 11 da fase 6
+   e as da fase 7 (seções abaixo).
 2. **Onde a agenda roda** (#231): TurboCloud, para onde o DNS de
    `agenda.contactia.com.br` já aponta, ou a VPS do CRM.
 3. **Quem cadastra os usuários da agenda.** Ainda não há rota nem tela; hoje eles
@@ -52,15 +63,19 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
    fase 8, ou ele é reescrito sobre a API v1 (junto com o cadastro dos usuários),
    ou sai.
 
-**Próximo passo de código:** a fase 7 (#230), a ligação com o CRM:
+**Fase 7 (#230), a ligação com o CRM, em três partes:**
 
-- a caixa de saída gravada na mesma transação e entregue pelo worker;
-- os webhooks de entrada (`card.movido`), ignorando os da própria agenda;
-- a escolha do lembrete sincronizada;
-- no CRM, o `POST /cards` com a data da consulta numa chamada só e a rota da chave
-  para a escolha do lembrete;
-- voltam a conversa com o paciente na plataforma, no popover da consulta, e a aba
-  de integração das configurações.
+- **7a. Saída para o CRM: feita.** O worker entrega os avisos da caixa de saída
+  pela API v1 do CRM (`CRM_URL` e `CRM_CHAVE` no `.env`), com as regras em
+  "Decidido na construção (fase 7)". Não precisou mudar o CRM: o `POST /cards`
+  com a data numa chamada só ficou dispensável, porque a entrega decide o segundo
+  passo pela resposta.
+- **7b. Entrada pelo webhook do CRM:** o encaixe automático, a lista "Vindas do
+  CRM" e a agenda acompanhando o card. No CRM: o id do dentista da Clinicorp no
+  evento da consulta, e a agenda cadastra o webhook de cada clínica com a chave.
+- **7c. Plataforma:** confirmação, lembrete, etiquetas e contato; a escolha do
+  lembrete sincronizada (no CRM, o valor `agenda` e a rota da chave); a aba de
+  integração das configurações e a conversa com o paciente no popover.
 
 **Atenções:**
 
@@ -82,7 +97,8 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | feita |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | feita (ver "Decidido na construção (fase 5)") |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova, com o login pelo item de menu trazido da fase 8 | feita (ver "Decidido na construção (fase 6)") |
-| 7 | Ligação com o CRM: caixa de saída, worker, webhooks de entrada, a escolha do lembrete sincronizada; no CRM, `POST /cards` aceitar a data da consulta numa chamada só e uma rota para a chave ler e gravar a escolha do lembrete. Volta também a conversa com o paciente na plataforma, na consulta, e a aba de integração das configurações | médio |
+| 7 | Ligação com o CRM: 7a, a saída (caixa de saída e worker, feita); 7b, a entrada pelos webhooks, com o encaixe automático e a lista "Vindas do CRM"; 7c, a plataforma (confirmação, lembrete com a escolha sincronizada pelo CRM, etiquetas, a aba de integração e a conversa com o paciente na consulta) | médio |
+| 7.5 | No CRM, o diálogo de agendar sobre os horários desta agenda, nos moldes da Agenda na Clinicorp (ADR 0015 do CRM) | médio |
 | 8 | Acesso e deploy: quem cadastra os usuários da agenda (e o superadmin, como no CRM), o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
 | 9 | Corte e documentação: recriar as clínicas reais, desligar a Vercel, pausar o Supabase antigo e publicar a documentação da API no ReadMe | pequeno |
 
@@ -198,6 +214,39 @@ Regras que a agenda antiga não tinha, ou tinha diferente, e que entraram em
 11. **A conexão parada é devolvida ao pooler** (`idle_timeout` de 20 s) e a fila
     tem 2 conexões próprias, como no CRM depois de 2026-10-14: a agenda vai
     dividir o pooler em modo sessão com ele.
+
+## Decidido na construção (fase 7, a confirmar com a equipe)
+
+Na saída para o CRM (7a), em `src/modulos/crm`:
+
+1. **O card mostra a próxima consulta ativa do telefone.** O CRM tem um card por
+   contato, e a família divide o número. Criar e remarcar põem o card em
+   Agendados com a data da próxima consulta agendada ou confirmada daquele
+   telefone (a desta, se for ela). Cancelar e faltar só levam o card a Cancelados
+   ou Faltosos quando não sobra outra; se sobra, o card fica em Agendados com a
+   data dela, e o CRM marca a remarcação.
+2. **O comparecimento passa o card ao CRC2 sempre**, mesmo com outra consulta
+   marcada.
+3. **"Já feito" encerra a entrega sem erro:** o card no CRC2 ou em outro painel
+   (`MOVER_ENTRE_PAINEIS`, `JA_ESTA_EM_OUTRO_PAINEL`) não é mexido, e cancelar sem
+   card aberto no CRM não faz nada. O motivo fica no `resultado` do aviso.
+4. **O card fechado no CRM** (Perda, Ganho) não é reaberto à força: na próxima
+   consulta, o `POST /cards` acha o card aberto do contato ou cria (ou reabre) um,
+   como o CRM decide, e a consulta passa a guardar esse.
+5. **A hora real do agendamento** vai no `agendadoEm` quando o card entra em
+   Agendados pela entrega (o CRM estava fora e a entrega atrasou). O card criado
+   já em Agendados fica com a hora da entrega.
+6. **Tentativas como os webhooks do CRM:** 30 s, 2 min, 10 min, 30 min, 1 h, 3 h,
+   6 h e 12 h, e desiste. Repetem a rede, o CRM fora do ar, o limite de pedidos e
+   a chave recusada (401 e 403, que a equipe corrige); a recusa por regra desiste
+   na hora.
+7. **Uma chave do CRM para a agenda** (`CRM_CHAVE`, do tipo integração, com
+   escrita e todas as clínicas), com o `companyId` da clínica no `X-Clinica`,
+   como a decisão D4 do modelo. Sem ela no `.env`, os avisos esperam na caixa.
+8. **O card é do worker:** a consulta guarda o `crm_card_id` sem mudar de versão,
+   e salvar a consulta pela tela não regrava esse campo nem o `lembrete_mensagem_id`.
+9. **Os avisos nascem com o instante do caso de uso** (`criado_em` e a primeira
+   tentativa), e não com o relógio do banco.
 
 ## Decidido com a equipe (2026-10-07)
 

@@ -43,6 +43,10 @@ flowchart TD
   (`check_appointment_conflict`), busca sem acento e telefone
   (`find_patients_by_phone`), e as restrições `EXCLUDE` que impedem duas
   consultas no mesmo horário.
+- **O card no CRM:** agendar, remarcar, cancelar, a falta e a chegada gravam um
+  aviso na caixa de saída, na mesma transação da consulta, e o worker entrega pela
+  API do CRM (`src/modulos/crm`), com novas tentativas. O card mostra a próxima
+  consulta ativa do telefone.
 - **Mensagens:** as rotas antigas mandavam a confirmação e o lembrete e
   etiquetavam o contato na plataforma. Elas saíram em outubro de 2026; as
   mensagens voltam na fase 7, pela caixa de saída e pelo CRM.
@@ -194,6 +198,8 @@ O modelo está em `.env.example`.
 DATABASE_URL=                         # Postgres do projeto do CRM (pooler), esquema agenda
 AGENDA_SEGREDO_SESSAO=                # 32+ caracteres aleatórios; assina a sessão da tela
 EMBED_HOSTS=                          # hosts da plataforma que abrem a agenda (ex.: app.fluxodonto.com)
+CRM_URL=                              # o endereço do CRM (ex.: https://crm.contactia.com.br)
+CRM_CHAVE=                            # a chave crm_... da agenda: integração, com escrita, todas as clínicas
 
 # Código antigo (só o onboarding público)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
