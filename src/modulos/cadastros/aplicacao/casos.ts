@@ -61,6 +61,7 @@ export interface DadosDoProfissional {
   cro?: string | null
   cor?: string
   usuarioId?: string | null
+  idNoProntuario?: string | null
   especialidadeIds?: string[]
   unidades?: UnidadeDoProfissional[]
 }
@@ -291,6 +292,7 @@ export function casosDosCadastros({ banco, gerarId = () => crypto.randomUUID() }
           cro: textoOpcional(dados.cro),
           cor: corValida(dados.cor ?? COR_DO_PROFISSIONAL),
           usuarioId: dados.usuarioId ?? null,
+          idNoProntuario: textoOpcional(dados.idNoProntuario),
           ativo: true,
           ...vinculos,
         }
@@ -314,11 +316,27 @@ export function casosDosCadastros({ banco, gerarId = () => crypto.randomUUID() }
           cro: campos.cro === undefined ? undefined : textoOpcional(campos.cro),
           cor: campos.cor === undefined ? undefined : corValida(campos.cor),
           usuarioId: campos.usuarioId,
+          idNoProntuario: campos.idNoProntuario === undefined ? undefined : textoOpcional(campos.idNoProntuario),
           ativo: campos.ativo,
           ...vinculos,
         })
         await r.profissionais.atualizar(acesso.clinicaId, novo)
         return novo
+      })
+    },
+
+    /**
+     * O procedimento da consulta que o CRM marca fora da agenda (fase 7b): sem ele,
+     * nenhuma vinda entra sozinha. Só o gestor; o procedimento é da clínica e ativo.
+     */
+    async definirProcedimentoDasVindas(acesso: Acesso, procedimentoId: string | null): Promise<void> {
+      exigirGestor(acesso)
+      await banco.executar(async (r) => {
+        if (procedimentoId) {
+          const procedimento = await r.procedimentos.obter(acesso.clinicaId, procedimentoId)
+          if (!procedimento?.ativo) throw new ErroDeDominio('nao_encontrado', 'PROCEDIMENTO_NAO_ENCONTRADO', 'Procedimento não encontrado')
+        }
+        await r.clinica.definirProcedimentoDasVindas(acesso.clinicaId, procedimentoId)
       })
     },
 

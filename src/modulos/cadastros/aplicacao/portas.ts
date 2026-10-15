@@ -48,6 +48,8 @@ export interface Profissional {
   cro: string | null
   cor: string
   usuarioId: string | null
+  /** O dentista no prontuário (a Clinicorp), para a consulta que o CRM marca lá entrar sozinha. */
+  idNoProntuario: string | null
   ativo: boolean
   especialidadeIds: string[]
   unidades: UnidadeDoProfissional[]
@@ -120,6 +122,10 @@ export interface RepositorioDeCadastros {
     doProfissional(clinicaId: string, profissionalId: string): Promise<Expediente[]>
     /** Troca a semana inteira do profissional. */
     substituir(clinicaId: string, profissionalId: string, expedientes: Expediente[]): Promise<void>
+  }
+  clinica: {
+    /** O procedimento da consulta que o CRM marca fora da agenda (fase 7b). */
+    definirProcedimentoDasVindas(clinicaId: string, procedimentoId: string | null): Promise<void>
   }
   bloqueios: {
     listar(clinicaId: string, filtro: FiltroDeBloqueios): Promise<Bloqueio[]>

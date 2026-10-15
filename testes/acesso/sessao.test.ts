@@ -117,7 +117,7 @@ describe('a sessão na API', () => {
     expect(resposta.status).toBe(200)
     expect(await resposta.json()).toEqual({
       usuario: { id: gestora.id, nome: 'Gestora', papeis: { gestor: true, recepcao: false, dentista: false }, profissionalId: null, unidades: [] },
-      clinica: { id: c.clinica, companyId, nome: 'Clínica Sorriso', fusoHorario: 'America/Sao_Paulo', cadenciaMinutos: 30 },
+      clinica: { id: c.clinica, companyId, nome: 'Clínica Sorriso', fusoHorario: 'America/Sao_Paulo', cadenciaMinutos: 30, procedimentoDasVindasId: null },
     })
   })
 

@@ -16,6 +16,8 @@ export interface ClinicaDaSessao extends ClinicaDeAcesso {
   nome: string
   fusoHorario: string
   cadenciaMinutos: number
+  /** O procedimento da consulta que o CRM marca fora da agenda (fase 7b). */
+  procedimentoDasVindasId: string | null
 }
 
 /** O usuário da agenda, com o que a sessão precisa saber dele. */

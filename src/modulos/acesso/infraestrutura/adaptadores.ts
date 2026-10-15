@@ -82,6 +82,7 @@ export function repositorioDeAcessoPostgres(db: Banco): RepositorioDeAcesso {
           nome: clinicas.nome,
           fusoHorario: clinicas.fuso_horario,
           cadenciaMinutos: clinicas.cadencia_minutos,
+          procedimentoDasVindasId: clinicas.procedimento_das_vindas_id,
         })
         .from(clinicas)
         .where(and(eq(clinicas.id, id), eq(clinicas.ativa, true)))

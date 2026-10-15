@@ -99,6 +99,11 @@ export function crmDeMentira() {
       webhooks.set(id, { url: pedido.url, eventos: pedido.eventos })
       return { id, segredo: 'whsec_teste' }
     },
+    async unidades() {
+      chamadas.push('unidades')
+      falhar()
+      return [{ id: 'unidade-do-crm', nome: 'Centro', ativa: true }]
+    },
     async apagarWebhook(companyId, webhookId) {
       chamadas.push('apagar webhook')
       falhar()

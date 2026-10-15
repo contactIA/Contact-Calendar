@@ -52,6 +52,8 @@ export interface ApiDoCrm {
   criarWebhook(companyId: string, pedido: { nome: string; url: string; eventos: readonly EventoDoCrm[] }): Promise<{ id: string; segredo: string }>
   /** `DELETE /webhooks/{id}`; o que já não existe não é erro. */
   apagarWebhook(companyId: string, webhookId: string): Promise<void>
+  /** `GET /unidades`: para o gestor ligar cada unidade da agenda à do CRM. */
+  unidades(companyId: string): Promise<{ id: string; nome: string; ativa: boolean }[]>
 }
 
 /** Um aviso ao CRM reservado para entrega, com o que ela precisa saber agora. */

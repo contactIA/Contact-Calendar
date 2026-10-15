@@ -139,6 +139,11 @@ export function apiDoCrmHttp({ url, chave, tempoLimiteMs = 10_000, fetch: buscar
       return { id: r!.id, segredo: r!.segredo }
     },
 
+    async unidades(companyId) {
+      const r = await pedir<{ unidades: { id: string; nome: string; ativa: boolean }[] }>(companyId, 'GET', '/unidades')
+      return (r?.unidades ?? []).map(({ id, nome, ativa }) => ({ id, nome, ativa }))
+    },
+
     async apagarWebhook(companyId, webhookId) {
       try {
         await pedir(companyId, 'DELETE', `/webhooks/${encodeURIComponent(webhookId)}`)

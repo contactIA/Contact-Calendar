@@ -150,10 +150,16 @@ As telas leem e gravam pela API v1 (fase 6). Entram por `/`, pelo item de menu.
 | Configurações | `/configuracoes` | gestor |
 | Cadastro de clínica | `/onboarding` | público (código antigo) |
 
-Configurações tem as abas Geral (cadência da grade), Unidades, Cadeiras,
+A agenda mostra o botão **Vindas do CRM** quando o CRM marcou consultas fora dela
+que não entraram sozinhas (fase 7b): a recepção encaixa cada uma escolhendo o
+profissional, o procedimento e a cadeira, ou descarta.
+
+Configurações tem as abas Geral (cadência da grade, a ligação com o CRM e o
+procedimento das consultas vindas do CRM), Unidades (com a unidade no CRM), Cadeiras,
 Especialidades, Procedimentos, Profissionais (unidades com a prioridade,
 especialidades e a semana de horários) e Chaves. A integração com a plataforma de
-mensagens volta na fase 7.
+mensagens volta na fase 7c. Na aba Profissionais, o "dentista no prontuário" liga o
+profissional ao dentista da Clinicorp.
 
 **Paciente 360**: na API nova, `GET /api/v1/pacientes/{id}` traz o cadastro, as
 consultas e a última visita.

@@ -7,6 +7,7 @@ import type {
   ChaveJson,
   EspecialidadeJson,
   ExpedienteJson,
+  LigacaoComOCrmJson,
   ProcedimentoJson,
   ProfissionalJson,
   UnidadeJson,
@@ -188,6 +189,87 @@ function GeralTab() {
           {saved && <span className="text-xs font-medium text-emerald-600">✓ Salvo</span>}
         </div>
       </div>
+      <LigacaoComOCrm />
+    </div>
+  )
+}
+
+/**
+ * A ligação com o CRM (fase 7): ligada, a agenda avisa o CRM do que acontece com
+ * as consultas e recebe o que o CRM marca fora dela. O procedimento das vindas é
+ * o das consultas que o CRM marca: sem ele, elas esperam a recepção.
+ */
+function LigacaoComOCrm() {
+  const eu = useEu()
+  const [ligacao, setLigacao] = useState<LigacaoComOCrmJson | null>(null)
+  const [procedimentos, setProcedimentos] = useState<ProcedimentoJson[]>([])
+  const [salvo, setSalvo] = useState(eu.clinica.procedimentoDasVindasId ?? '')
+  const [procedimentoId, setProcedimentoId] = useState(eu.clinica.procedimentoDasVindasId ?? '')
+  const [ocupado, setOcupado] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get<LigacaoComOCrmJson>('/crm/ligacao').then(setLigacao).catch(() => {})
+    api.get<{ procedimentos: ProcedimentoJson[] }>('/procedimentos').then(r => setProcedimentos(r.procedimentos.filter(p => p.ativo))).catch(() => {})
+  }, [])
+
+  async function alternar() {
+    setOcupado(true); setError('')
+    try {
+      setLigacao(ligacao?.ligada ? await api.delete<LigacaoComOCrmJson>('/crm/ligacao') : await api.post<LigacaoComOCrmJson>('/crm/ligacao'))
+    } catch (e) {
+      setError(fraseDoErro(e))
+    } finally { setOcupado(false) }
+  }
+
+  async function salvarProcedimento() {
+    setOcupado(true); setError('')
+    try {
+      await api.put('/crm/procedimento-das-vindas', { procedimentoId: procedimentoId || null })
+      setSalvo(procedimentoId)
+    } catch (e) {
+      setError(fraseDoErro(e))
+    } finally { setOcupado(false) }
+  }
+
+  if (!ligacao) return null
+  const botao = ligacao.ligada ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90'
+  return (
+    <div className="mt-6">
+      <SectionHeader title="Ligação com o CRM" />
+      <div className="bg-white border border-gray-100 rounded-xl px-5 py-5 space-y-5">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-800">{ligacao.ligada ? 'Ligada' : 'Desligada'}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+              Ligada, cada consulta move o card do paciente no CRM, e o que o CRM marca fora da agenda chega aqui.
+            </p>
+          </div>
+          <button onClick={alternar} disabled={ocupado || (!ligacao.ligada && !ligacao.podeLigar)}
+            className={'px-4 py-2.5 rounded-xl text-sm font-semibold transition-opacity disabled:opacity-40 ' + botao}>
+            {ligacao.ligada ? 'Desligar' : 'Ligar'}
+          </button>
+        </div>
+        {!ligacao.podeLigar && !ligacao.ligada && (
+          <p className="text-[11px] text-amber-600">Este servidor ainda não tem o endereço e a chave do CRM. Fale com a equipe.</p>
+        )}
+        <div>
+          <Field label="Procedimento das consultas vindas do CRM">
+            <select className={inputCls} value={procedimentoId} onChange={e => setProcedimentoId(e.target.value)}>
+              <option value="">Nenhum: a recepção escolhe em cada uma</option>
+              {procedimentos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+          </Field>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+            A consulta que o CRM marca fora da agenda entra sozinha com este procedimento, quando o dentista e a unidade já estão ligados.
+          </p>
+        </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button onClick={salvarProcedimento} disabled={ocupado || procedimentoId === salvo}
+          className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-rose-500 text-white hover:opacity-90 disabled:opacity-40 transition-opacity">
+          Salvar procedimento
+        </button>
+      </div>
     </div>
   )
 }
@@ -200,14 +282,23 @@ function UnitsTab() {
   const [name, setName]     = useState('')
   const [address, setAddress] = useState('')
   const [phone, setPhone]   = useState('')
+  const [crmUnidadeId, setCrmUnidadeId] = useState('')
+  /** As unidades do CRM; null quando o CRM não responde ou não está configurado: o campo some. */
+  const [unidadesDoCrm, setUnidadesDoCrm] = useState<{ id: string; nome: string; ativa: boolean }[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  useEffect(() => {
+    api.get<{ unidades: { id: string; nome: string; ativa: boolean }[] }>('/crm/unidades').then(r => setUnidadesDoCrm(r.unidades)).catch(() => setUnidadesDoCrm(null))
+  }, [])
+  const nomeNoCrm = (id: string | null) => (id ? unidadesDoCrm?.find(u => u.id === id)?.nome : undefined)
 
   function openModal(item: UnidadeJson | null) {
     setModal({ open: true, item })
     setName(item?.nome ?? '')
     setAddress(item?.endereco ?? '')
     setPhone(item?.telefone ?? '')
+    setCrmUnidadeId(item?.crmUnidadeId ?? '')
     setError('')
   }
 
@@ -215,7 +306,12 @@ function UnitsTab() {
     if (!name.trim()) { setError('Nome é obrigatório'); return }
     setSaving(true); setError('')
     try {
-      const payload = { nome: name.trim(), endereco: address.trim() || null, telefone: phone.trim() || null }
+      const payload = {
+        nome: name.trim(),
+        endereco: address.trim() || null,
+        telefone: phone.trim() || null,
+        ...(unidadesDoCrm ? { crmUnidadeId: crmUnidadeId || null } : {}),
+      }
       if (modal.item) await api.patch(`/unidades/${modal.item.id}`, payload)
       else await api.post('/unidades', payload)
       setModal({ open: false, item: null })
@@ -243,6 +339,7 @@ function UnitsTab() {
                 <p className="text-sm font-semibold text-gray-800">{u.nome}</p>
                 {u.endereco && <p className="text-xs text-gray-400 truncate">{u.endereco}</p>}
                 {u.telefone && <p className="text-xs text-gray-400">{u.telefone}</p>}
+                {nomeNoCrm(u.crmUnidadeId) && <p className="text-xs text-gray-400">No CRM: {nomeNoCrm(u.crmUnidadeId)}</p>}
               </div>
               <Toggle value={u.ativa} onChange={() => toggleActive(u)} />
               <button onClick={() => openModal(u)} className="text-xs text-violet-600 hover:underline font-medium">Editar</button>
@@ -257,6 +354,14 @@ function UnitsTab() {
             <Field label="Nome *"><input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Clínica Centro" /></Field>
             <Field label="Endereço"><input className={inputCls} value={address} onChange={e => setAddress(e.target.value)} placeholder="Rua, número, bairro" /></Field>
             <Field label="Telefone"><input className={inputCls} value={phone} onChange={e => setPhone(e.target.value)} placeholder="(00) 0000-0000" /></Field>
+            {unidadesDoCrm && (
+              <Field label="Unidade no CRM">
+                <select className={inputCls} value={crmUnidadeId} onChange={e => setCrmUnidadeId(e.target.value)}>
+                  <option value="">Nenhuma: o card do paciente fica sem unidade</option>
+                  {unidadesDoCrm.map(u => <option key={u.id} value={u.id}>{u.nome}{u.ativa ? '' : ' (desativada)'}</option>)}
+                </select>
+              </Field>
+            )}
             {error && <p className="text-xs text-red-500">{error}</p>}
           </div>
           <Rodape onCancel={() => setModal({ open: false, item: null })} onSave={save} saving={saving} />
@@ -639,6 +744,7 @@ function DentistsTab() {
   const [schedulesFor, setSchedulesFor] = useState<ProfissionalJson | null>(null)
   const [name, setName]         = useState('')
   const [cro, setCro]           = useState('')
+  const [idNoProntuario, setIdNoProntuario] = useState('')
   const [color, setColor]       = useState(PRESET_COLORS[0]!)
   const [specialties, setSpecialties] = useState<string[]>([])
   /** Onde atende, com a prioridade em cada unidade (menor vem primeiro na recomendação). */
@@ -653,6 +759,7 @@ function DentistsTab() {
     setModal({ open: true, item })
     setName(item?.nome ?? '')
     setCro(item?.cro ?? '')
+    setIdNoProntuario(item?.idNoProntuario ?? '')
     setColor(item?.cor ?? PRESET_COLORS[0]!)
     setSpecialties(item?.especialidadeIds ?? [])
     setPrioridades(Object.fromEntries((item?.unidades ?? []).map(u => [u.unidadeId, u.prioridade])))
@@ -668,6 +775,7 @@ function DentistsTab() {
       const payload = {
         nome: name.trim(),
         cro: cro.trim() || null,
+        idNoProntuario: idNoProntuario.trim() || null,
         cor: color,
         especialidadeIds: specialties,
         unidades: Object.entries(prioridades).map(([unidadeId, prioridade]) => ({ unidadeId, prioridade })),
@@ -718,6 +826,12 @@ function DentistsTab() {
           <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
             <Field label="Nome completo *"><input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Dr. Nome Sobrenome" /></Field>
             <Field label="CRO"><input className={inputCls} value={cro} onChange={e => setCro(e.target.value)} placeholder="CRO/SP 00000" /></Field>
+            <Field label="Dentista no prontuário">
+              <input className={inputCls} value={idNoProntuario} onChange={e => setIdNoProntuario(e.target.value)} placeholder="O código dele no prontuário" />
+            </Field>
+            <p className="text-[11px] text-gray-400 -mt-2 leading-relaxed">
+              Com ele, a consulta que o CRM marca no prontuário entra sozinha na agenda deste profissional. Ao encaixar uma consulta vinda do CRM, ele é preenchido sozinho.
+            </p>
             <Field label="Onde atende (e a prioridade)">
               <div className="space-y-1.5 mt-1">
                 {unidades.filter(u => u.ativa || prioridades[u.id] !== undefined).map(u => {

@@ -169,6 +169,27 @@ describe('profissionais, expedientes e bloqueios', () => {
   })
 })
 
+describe('a ligação com o CRM nos cadastros (fase 7b)', () => {
+  it('o profissional guarda o dentista do prontuário; o mesmo dentista não liga a dois', async () => {
+    const c = await montarClinicaDaAgenda(pg)
+    const gestor = gestorDa(c)
+    expect(await casos.cadastros.alterarProfissional(gestor, c.ana, { idNoProntuario: ' 4521 ' })).toMatchObject({ idNoProntuario: '4521' })
+    expect(await codigoDoErro(casos.cadastros.alterarProfissional(gestor, c.bruno, { idNoProntuario: '4521' }))).toBe('DENTISTA_JA_LIGADO')
+    expect(await casos.cadastros.alterarProfissional(gestor, c.ana, { idNoProntuario: '' })).toMatchObject({ idNoProntuario: null })
+  })
+
+  it('o gestor escolhe o procedimento das vindas, da clínica e ativo', async () => {
+    const c = await montarClinicaDaAgenda(pg)
+    const outra = await montarClinicaDaAgenda(pg)
+    const gestor = gestorDa(c)
+    await casos.cadastros.definirProcedimentoDasVindas(gestor, c.avaliacao)
+    expect((await pg.query<{ p: string }>('select procedimento_das_vindas_id as p from agenda.clinicas where id = $1', [c.clinica])).rows[0]!.p).toBe(c.avaliacao)
+    expect(await codigoDoErro(casos.cadastros.definirProcedimentoDasVindas(gestor, outra.avaliacao))).toBe('PROCEDIMENTO_NAO_ENCONTRADO')
+    expect(await codigoDoErro(casos.cadastros.definirProcedimentoDasVindas(c.recepcao, null))).toBe('SO_GESTOR')
+    await casos.cadastros.definirProcedimentoDasVindas(gestor, null)
+  })
+})
+
 describe('chaves da API', () => {
   it('a chave criada pelo gestor autentica, confere o X-Clinica e para de valer quando revogada', async () => {
     const c = await montarClinicaDaAgenda(pg)

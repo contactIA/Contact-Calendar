@@ -51,6 +51,27 @@ const desligar = createRoute({
   responses: { 200: json(LigacaoComOCrm, 'Desligada'), ...erros(401, 403, 404, 502) },
 })
 
+const unidadesDoCrm = createRoute({
+  method: 'get',
+  path: '/crm/unidades',
+  hide: true,
+  tags: ['Cadastros'],
+  summary: 'As unidades da clínica no CRM',
+  description: 'Só o gestor, para ligar cada unidade da agenda à do CRM (`crmUnidadeId`).',
+  responses: { 200: json(z.object({ unidades: z.array(z.object({ id: z.string(), nome: z.string(), ativa: z.boolean() })) }), 'As unidades do CRM'), ...erros(401, 403, 502, 503) },
+})
+
+const procedimentoDasVindas = createRoute({
+  method: 'put',
+  path: '/crm/procedimento-das-vindas',
+  hide: true,
+  tags: ['Cadastros'],
+  summary: 'O procedimento das consultas vindas do CRM',
+  description: 'Só o gestor. Sem ele (`null`), nenhuma consulta que o CRM marca fora da agenda entra sozinha.',
+  request: corpoJson(z.object({ procedimentoId: z.uuid().nullable() })),
+  responses: { 204: { description: 'Gravado' }, ...erros(...ERROS_COMUNS) },
+})
+
 const listarVindas = createRoute({
   method: 'get',
   path: '/vindas',
@@ -74,7 +95,7 @@ const encaixar = createRoute({
     ...corpoJson(
       z.object({
         profissionalId: z.uuid(),
-        procedimentoId: z.uuid(),
+        procedimentoId: z.uuid().optional().openapi({ description: 'Para marcar; na remarcação, a consulta continua com o dela' }),
         cadeiraId: z.uuid().optional(),
         inicio: DataHora.optional(),
         duracaoMinutos: z.number().int().min(5).max(480).optional(),
@@ -98,6 +119,8 @@ const descartar = createRoute({
 
 const r = novoRoteador()
 r.use('/crm/ligacao', exigirAcesso)
+r.use('/crm/procedimento-das-vindas', exigirAcesso)
+r.use('/crm/unidades', exigirAcesso)
 r.use('/vindas', exigirAcesso)
 r.use('/vindas/*', exigirAcesso)
 
@@ -109,6 +132,11 @@ export const rotasDoCrm = r
   .openapi(verLigacao, async (c) => c.json(await c.var.casos.crm.estadoDaLigacao(c.var.acesso), 200))
   .openapi(ligar, async (c) => c.json(await c.var.casos.crm.ligar(c.var.acesso), 200))
   .openapi(desligar, async (c) => c.json(await c.var.casos.crm.desligar(c.var.acesso), 200))
+  .openapi(unidadesDoCrm, async (c) => c.json({ unidades: await c.var.casos.crm.unidadesDoCrm(c.var.acesso) }, 200))
+  .openapi(procedimentoDasVindas, async (c) => {
+    await c.var.casos.cadastros.definirProcedimentoDasVindas(c.var.acesso, c.req.valid('json').procedimentoId)
+    return c.body(null, 204)
+  })
   .openapi(listarVindas, async (c) => c.json(serializar({ vindas: await c.var.casos.vindas.listar(c.var.acesso) }), 200))
   .openapi(encaixar, async (c) => {
     const { inicio, ...pedido } = c.req.valid('json')

@@ -88,6 +88,7 @@ export const Profissional = z
     cro: z.string().nullable(),
     cor: z.string(),
     usuarioId: Id.nullable().openapi({ description: 'O usuário da agenda, quando o profissional entra pela plataforma' }),
+    idNoProntuario: z.string().nullable().openapi({ description: 'O dentista no prontuário (a Clinicorp): a consulta que o CRM marca lá entra sozinha com este profissional' }),
     ativo: z.boolean(),
     especialidadeIds: z.array(Id),
     unidades: z.array(UnidadeDoProfissional),
@@ -145,6 +146,7 @@ export const Eu = z
       nome: z.string(),
       fusoHorario: z.string().openapi({ example: 'America/Sao_Paulo' }),
       cadenciaMinutos: z.number().int().openapi({ description: 'De quanto em quanto tempo a grade oferece um início', example: 30 }),
+      procedimentoDasVindasId: Id.nullable().openapi({ description: 'O procedimento da consulta que o CRM marca fora da agenda' }),
     }),
   })
   .openapi('Eu')
@@ -166,6 +168,8 @@ export type ExpedienteJson = z.infer<typeof Expediente>
 export type BloqueioJson = z.infer<typeof Bloqueio>
 export type ChaveJson = z.infer<typeof Chave>
 export type EuJson = z.infer<typeof Eu>
+export type VindaJson = z.infer<typeof Vinda>
+export type LigacaoComOCrmJson = z.infer<typeof LigacaoComOCrm>
 
 // ── Ligação com o CRM (fase 7b) ──────────────────────────────────────────────
 

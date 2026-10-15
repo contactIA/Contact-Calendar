@@ -16,11 +16,13 @@ import { AppointmentPopover } from './AppointmentPopover'
 import { FilterChips, type FilterChip } from './FilterChips'
 import { NewAppointmentModal } from './modals/NewAppointmentModal'
 import { RescheduleModal } from './modals/RescheduleModal'
+import { VindasDoCrmModal } from './modals/VindasDoCrmModal'
 import { useAppointments, type Appointment } from '@/hooks/useAppointments'
 import { useDentists } from '@/hooks/useDentists'
 import { useUnits } from '@/hooks/useUnits'
 import { useProcedures } from '@/hooks/useProcedures'
 import { useScheduleBlocks } from '@/hooks/useScheduleBlocks'
+import { useVindas } from '@/hooks/useVindas'
 import { useEu } from '@/componentes/casca'
 
 type View = 'day' | 'week' | 'list'
@@ -94,6 +96,8 @@ export function AgendaShell() {
   const agenda = papeis.gestor || papeis.recepcao
   const { units } = useUnits()
   const { procedures } = useProcedures()
+  const { vindas, recarregar: recarregarVindas } = useVindas(agenda)
+  const [vindasAbertas, setVindasAbertas] = useState(false)
 
   // Filtros de unidade/procedimento (TASK-033): nascem da querystring — assim
   // sobrevivem à troca de dia E à recarga da página — e voltam para ela a cada
@@ -278,6 +282,8 @@ export function AgendaShell() {
           onSearch={setSearch}
           searchResults={searchResults}
           onAppointmentSelect={handleAppointmentSelect}
+          vindasPendentes={vindas.length}
+          onVindas={agenda ? () => setVindasAbertas(true) : undefined}
         />
 
         <div className="relative flex flex-col flex-1 overflow-hidden">
@@ -368,6 +374,16 @@ export function AgendaShell() {
         dentists={dentists}
         onClose={() => setRescheduleAppt(null)}
         onSaved={() => { setRescheduleAppt(null); refetch() }}
+      />
+
+      {/* Consultas vindas do CRM */}
+      <VindasDoCrmModal
+        open={vindasAbertas}
+        vindas={vindas}
+        dentists={dentists}
+        procedures={procedures}
+        onClose={() => setVindasAbertas(false)}
+        onChanged={() => { recarregarVindas(); refetch() }}
       />
 
       {/* New appointment modal */}

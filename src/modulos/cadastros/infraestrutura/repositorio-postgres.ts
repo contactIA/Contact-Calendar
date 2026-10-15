@@ -6,6 +6,7 @@ import { violou, type Banco } from '@/infra/banco/conexao'
 import {
   bloqueios,
   cadeiras,
+  clinicas,
   especialidades,
   expedientes,
   procedimentos,
@@ -33,6 +34,9 @@ async function gravando<T>(gravar: () => Promise<T>): Promise<T> {
   } catch (erro) {
     for (const [restricao, frase] of Object.entries(NOMES_UNICOS)) {
       if (violou(erro, restricao)) throw new ErroDeDominio('conflito', 'NOME_REPETIDO', frase)
+    }
+    if (violou(erro, 'profissionais_no_prontuario')) {
+      throw new ErroDeDominio('conflito', 'DENTISTA_JA_LIGADO', 'Esse dentista do prontuário já está ligado a outro profissional')
     }
     if (violou(erro, 'profissionais_usuario')) {
       throw new ErroDeDominio('conflito', 'USUARIO_JA_E_PROFISSIONAL', 'Esse usuário já está ligado a outro profissional')
@@ -86,6 +90,7 @@ function repositorio(db: Banco): RepositorioDeCadastros {
       cro: l.cro,
       cor: l.cor,
       usuarioId: l.usuario_id,
+      idNoProntuario: l.id_no_prontuario,
       ativo: l.ativo,
       especialidadeIds: especialidadesDe.get(l.id) ?? [],
       unidades: unidadesDe.get(l.id) ?? [],
@@ -238,7 +243,7 @@ function repositorio(db: Banco): RepositorioDeCadastros {
       },
       async inserir(clinicaId, p) {
         await gravando(async () => {
-          await db.insert(profissionais).values({ id: p.id, clinica_id: clinicaId, nome: p.nome, cro: p.cro, cor: p.cor, usuario_id: p.usuarioId, ativo: p.ativo })
+          await db.insert(profissionais).values({ id: p.id, clinica_id: clinicaId, nome: p.nome, cro: p.cro, cor: p.cor, usuario_id: p.usuarioId, id_no_prontuario: p.idNoProntuario, ativo: p.ativo })
           await gravarVinculos(clinicaId, p)
         })
       },
@@ -246,7 +251,7 @@ function repositorio(db: Banco): RepositorioDeCadastros {
         await gravando(async () => {
           await db
             .update(profissionais)
-            .set({ nome: p.nome, cro: p.cro, cor: p.cor, usuario_id: p.usuarioId, ativo: p.ativo })
+            .set({ nome: p.nome, cro: p.cro, cor: p.cor, usuario_id: p.usuarioId, id_no_prontuario: p.idNoProntuario, ativo: p.ativo })
             .where(daClinica(profissionais, clinicaId, p.id))
           await gravarVinculos(clinicaId, p)
         })
@@ -254,6 +259,12 @@ function repositorio(db: Banco): RepositorioDeCadastros {
       async usuarioExiste(clinicaId, usuarioId) {
         const [u] = await db.select({ id: usuarios.id }).from(usuarios).where(daClinica(usuarios, clinicaId, usuarioId))
         return Boolean(u)
+      },
+    },
+
+    clinica: {
+      async definirProcedimentoDasVindas(clinicaId, procedimentoId) {
+        await db.update(clinicas).set({ procedimento_das_vindas_id: procedimentoId }).where(eq(clinicas.id, clinicaId))
       },
     },
 

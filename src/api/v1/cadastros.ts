@@ -162,6 +162,7 @@ const DadosDoProfissional = z.object({
   cro: z.string().max(40).nullable().optional(),
   cor: Cor.optional(),
   usuarioId: z.uuid().nullable().optional(),
+  idNoProntuario: z.string().trim().max(60).nullable().optional().openapi({ description: 'O id do dentista no prontuário (a Clinicorp)' }),
   especialidadeIds: z.array(z.uuid()).max(50).optional(),
   unidades: z.array(UnidadeDoProfissional).max(50).optional().openapi({ description: 'Onde atende, com a prioridade em cada unidade' }),
 })

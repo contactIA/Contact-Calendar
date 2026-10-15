@@ -36,9 +36,12 @@ type Props = {
   onSearch: (q: string) => void
   searchResults: Appointment[]
   onAppointmentSelect: (appt: Appointment) => void
+  /** As consultas do CRM que esperam encaixe; sem nenhuma, o botão não aparece. */
+  vindasPendentes?: number
+  onVindas?: () => void
 }
 
-export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChange, onNewAppointment, onSearch, searchResults, onAppointmentSelect }: Props) {
+export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChange, onNewAppointment, onSearch, searchResults, onAppointmentSelect, vindasPendentes = 0, onVindas }: Props) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -155,6 +158,17 @@ export function AgendaHeader({ date, view, totalToday, onDateChange, onViewChang
           </div>
         )}
       </div>
+
+      {/* Consultas vindas do CRM, esperando encaixe */}
+      {onVindas && vindasPendentes > 0 && (
+        <button
+          onClick={onVindas}
+          className="flex items-center gap-1.5 px-3 h-8 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors flex-shrink-0"
+        >
+          Vindas do CRM
+          <span className="min-w-5 h-5 px-1 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center">{vindasPendentes}</span>
+        </button>
+      )}
 
       {/* View switcher */}
       <div className="flex border border-violet-200 rounded-lg overflow-hidden flex-shrink-0">

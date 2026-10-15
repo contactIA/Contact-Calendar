@@ -44,7 +44,8 @@ export type ResultadoDaVinda =
 
 export interface PedidoDeEncaixe {
   profissionalId: string
-  procedimentoId: string
+  /** Para marcar; na remarcação, a consulta continua com o dela. */
+  procedimentoId?: string
   cadeiraId?: string
   /** Outro horário que o da vinda (a recepção combinou outro com o paciente). */
   inicio?: Date
@@ -234,6 +235,7 @@ export function casosDasVindas({ uow, leituras, agenda, relogio, gerarId = () =>
         const nome = pedido.nome?.trim() || vinda.nome?.trim()
         if (!nome) throw new ErroDeDominio('invalido', 'NOME_OBRIGATORIO', 'Informe o nome do paciente')
         if (!vinda.unidadeId) throw new ErroDeDominio('invalido', 'UNIDADE_SEM_VINCULO', 'A unidade do card no CRM não está ligada a uma unidade da agenda')
+        if (!pedido.procedimentoId) throw new ErroDeDominio('invalido', 'PROCEDIMENTO_OBRIGATORIO', 'Escolha o procedimento')
         ;({ consulta } = await agenda.agendar(acesso, {
           unidadeId: vinda.unidadeId,
           profissionalId: pedido.profissionalId,

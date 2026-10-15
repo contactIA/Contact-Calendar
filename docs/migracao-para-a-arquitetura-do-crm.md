@@ -7,7 +7,7 @@ incremental sem convivência com dados vivos.
 
 ## Onde paramos (2026-10-15)
 
-**Feito:** fases 0 a 6, a saída das rotas antigas e a parte 7a da fase 7, no ramo
+**Feito:** fases 0 a 6, a saída das rotas antigas e as partes 7a e 7b da fase 7, no ramo
 `arquitetura`. O ramo **não** foi mesclado na `master`, porque a `master` publica na
 Vercel com o código antigo. As migrações do esquema `agenda` não foram aplicadas em
 banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 a 6
@@ -70,7 +70,7 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
   "Decidido na construção (fase 7)". Não precisou mudar o CRM: o `POST /cards`
   com a data numa chamada só ficou dispensável, porque a entrega decide o segundo
   passo pela resposta.
-- **7b. Entrada pelo webhook do CRM:** o encaixe automático, a lista "Vindas do
+- **7b. Entrada pelo webhook do CRM: feita.** O encaixe automático, a lista "Vindas do
   CRM" e a agenda acompanhando o card. Também não precisa mudar o CRM: a chave lê
   a consulta da Clinicorp com o dentista (`GET /cards/{id}/consultas`), o id dela
   mesma (`GET /eu`) e cadastra o webhook da clínica (`POST /webhooks`). Desenho:
@@ -295,6 +295,15 @@ Na entrada do CRM (7b), em `src/modulos/crm` e `src/modulos/agenda/aplicacao/vin
 17. **O procedimento das vindas não tem chave estrangeira** (o ciclo
     clínicas ↔ procedimentos confunde os tipos do Drizzle): quem grava confere que
     é da clínica; procedimento não se apaga, só se desativa.
+18. **As telas da 7b:** o botão "Vindas do CRM" no alto da agenda (só para a
+    recepção e o gestor, e só com alguma pendente) abre a lista; cada vinda mostra
+    o motivo e se encaixa escolhendo o profissional, o procedimento, a cadeira (ou
+    a primeira livre) e, se quiser, outra data e hora. A lista se atualiza a cada
+    minuto. Nas Configurações: a ligação com o CRM e o procedimento das vindas
+    (aba Geral), a unidade no CRM de cada unidade, numa lista lida do CRM pela
+    chave (aba Unidades), e o dentista no prontuário (aba Profissionais).
+19. **A vinda sem unidade ligada não se encaixa pela tela:** primeiro o gestor liga
+    a unidade da agenda à do CRM.
 
 ## Decidido com a equipe (2026-10-07)
 

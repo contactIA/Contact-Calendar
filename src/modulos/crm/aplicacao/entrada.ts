@@ -162,6 +162,15 @@ export function casosDaEntradaDoCrm({ api, entradas, clinicas, vindas, cifra, as
       return { ligada: true, recebeAvisos: true, podeLigar: true }
     },
 
+    /** As unidades do CRM, para o gestor ligar cada unidade da agenda à dela. */
+    async unidadesDoCrm(acesso: Acesso) {
+      exigirGestor(acesso)
+      const crm = exigirCrm()
+      const clinica = await clinicas.obter(acesso.clinicaId)
+      if (!clinica) throw new ErroDeDominio('nao_encontrado', 'CLINICA_NAO_ENCONTRADA', 'Clínica não encontrada')
+      return crm.unidades(clinica.companyId)
+    },
+
     /** Desliga: a agenda para de avisar o CRM e apaga o webhook de lá. */
     async desligar(acesso: Acesso) {
       exigirGestor(acesso)
