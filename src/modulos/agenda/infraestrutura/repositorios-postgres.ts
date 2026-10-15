@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm'
 import { ErroDeDominio } from '@/compartilhado/erros'
 import { STATUS_QUE_OCUPAM_HORARIO, type StatusDaConsulta, type TipoDeAtor } from '@/compartilhado/vocabulario'
 import { violou, type Banco } from '@/infra/banco/conexao'
@@ -16,8 +16,9 @@ import {
   profissionalEspecialidades,
   profissionalUnidades,
   unidades,
+  vindasDoCrm,
 } from '@/infra/banco/esquema'
-import type { Repositorios, UnidadeDeTrabalho, Ocupacao } from '../aplicacao/portas'
+import type { Repositorios, UnidadeDeTrabalho, Ocupacao, VindaDoCrm } from '../aplicacao/portas'
 import type { Consulta } from '../dominio/consulta'
 import type { Janela } from '../dominio/disponibilidade'
 import type { Paciente } from '../dominio/paciente'
@@ -27,6 +28,24 @@ import type { Paciente } from '../dominio/paciente'
 // domínio delas: é o que responde ao pedido que chegou ao mesmo tempo que outro.
 
 const OCUPAM = [...STATUS_QUE_OCUPAM_HORARIO]
+
+function paraVinda(l: typeof vindasDoCrm.$inferSelect): VindaDoCrm {
+  return {
+    id: l.id,
+    clinicaId: l.clinica_id,
+    crmCardId: l.crm_card_id,
+    tipo: l.tipo as VindaDoCrm['tipo'],
+    situacao: l.situacao as VindaDoCrm['situacao'],
+    unidadeId: l.unidade_id,
+    nome: l.nome,
+    telefone: l.telefone,
+    inicio: l.inicio,
+    fim: l.fim,
+    profissionalNoProntuario: l.profissional_no_prontuario_id ? { id: l.profissional_no_prontuario_id, nome: l.profissional_no_prontuario_nome } : null,
+    motivo: l.motivo,
+    consultaId: l.consulta_id,
+  }
+}
 
 const cruzaComOPeriodo = (inicio: typeof consultas.inicio, fim: typeof consultas.fim, periodo: Janela) =>
   and(lt(inicio, periodo.fim), gt(fim, periodo.inicio))
@@ -105,6 +124,7 @@ export function repositoriosPostgres(db: Banco): Repositorios {
           lembreteAntecedenciaHoras: c.lembrete_antecedencia_horas,
           sincronizarContatos: c.sincronizar_contatos,
           etiquetas: { agendou: c.etiqueta_agendou_id, compareceu: c.etiqueta_compareceu_id, faltou: c.etiqueta_faltou_id },
+          procedimentoDasVindasId: c.procedimento_das_vindas_id,
         }
       },
     },
@@ -159,6 +179,36 @@ export function repositoriosPostgres(db: Banco): Repositorios {
           )
           .orderBy(asc(expedientes.inicio))
         return linhas.map((l) => ({ profissionalId: l.profissional_id, inicio: horaCurta(l.inicio), fim: horaCurta(l.fim) }))
+      },
+
+      async unidadePeloCrm(clinicaId, crmUnidadeId) {
+        const [u] = await db
+          .select()
+          .from(unidades)
+          .where(and(eq(unidades.clinica_id, clinicaId), eq(unidades.crm_unidade_id, crmUnidadeId), eq(unidades.ativa, true)))
+        return u ? { id: u.id, nome: u.nome, ativa: u.ativa, crmUnidadeId: u.crm_unidade_id } : null
+      },
+
+      async profissionalNoProntuario(clinicaId, idNoProntuario) {
+        const [p] = await db
+          .select({ id: profissionais.id, nome: profissionais.nome })
+          .from(profissionais)
+          .where(and(eq(profissionais.clinica_id, clinicaId), eq(profissionais.id_no_prontuario, idNoProntuario), eq(profissionais.ativo, true)))
+        return p ?? null
+      },
+
+      async ligarAoProntuario(clinicaId, profissionalId, idNoProntuario) {
+        const [jaTem] = await db
+          .select({ id: profissionais.id })
+          .from(profissionais)
+          .where(and(eq(profissionais.clinica_id, clinicaId), eq(profissionais.id_no_prontuario, idNoProntuario)))
+        if (jaTem) return false
+        const ligados = await db
+          .update(profissionais)
+          .set({ id_no_prontuario: idNoProntuario })
+          .where(and(eq(profissionais.clinica_id, clinicaId), eq(profissionais.id, profissionalId), isNull(profissionais.id_no_prontuario)))
+          .returning({ id: profissionais.id })
+        return ligados.length > 0
       },
     },
 
@@ -320,6 +370,67 @@ export function repositoriosPostgres(db: Banco): Repositorios {
             and(eq(consultas.clinica_id, clinicaId), inArray(consultas.paciente_id, pacienteIds), inArray(consultas.status, ['em_atendimento', 'concluida']))
           )
         return linhas.map((l) => l.id)
+      },
+
+      async ligadaAoCard(clinicaId, crmCardId, status) {
+        const [l] = await db
+          .select()
+          .from(consultas)
+          .where(and(eq(consultas.clinica_id, clinicaId), eq(consultas.crm_card_id, crmCardId), inArray(consultas.status, [...status])))
+          .orderBy(desc(consultas.inicio))
+          .limit(1)
+        return l ? paraConsulta(l) : null
+      },
+    },
+
+    vindas: {
+      async pendenteDoCard(clinicaId, crmCardId) {
+        const [l] = await db
+          .select()
+          .from(vindasDoCrm)
+          .where(and(eq(vindasDoCrm.clinica_id, clinicaId), eq(vindasDoCrm.crm_card_id, crmCardId), eq(vindasDoCrm.situacao, 'pendente')))
+          .for('update')
+        return l ? paraVinda(l) : null
+      },
+
+      async obter(clinicaId, vindaId, opcoes) {
+        const vinda = db.select().from(vindasDoCrm).where(and(eq(vindasDoCrm.clinica_id, clinicaId), eq(vindasDoCrm.id, vindaId)))
+        const [l] = opcoes?.travar ? await vinda.for('update') : await vinda
+        return l ? paraVinda(l) : null
+      },
+
+      async salvar(v) {
+        const valores = {
+          tipo: v.tipo,
+          situacao: v.situacao,
+          unidade_id: v.unidadeId,
+          nome: v.nome,
+          telefone: v.telefone,
+          inicio: v.inicio,
+          fim: v.fim,
+          profissional_no_prontuario_id: v.profissionalNoProntuario?.id ?? null,
+          profissional_no_prontuario_nome: v.profissionalNoProntuario?.nome ?? null,
+          motivo: v.motivo,
+          consulta_id: v.consultaId,
+        }
+        await db
+          .insert(vindasDoCrm)
+          .values({ id: v.id, clinica_id: v.clinicaId, crm_card_id: v.crmCardId, ...valores })
+          .onConflictDoUpdate({ target: vindasDoCrm.id, set: valores })
+      },
+
+      async resolver(clinicaId, vindaId, { situacao, consultaId, motivo, ator, agora }) {
+        await db
+          .update(vindasDoCrm)
+          .set({
+            situacao,
+            ...(consultaId !== undefined ? { consulta_id: consultaId } : {}),
+            ...(motivo !== undefined ? { motivo } : {}),
+            resolvida_por_tipo: ator.tipo,
+            resolvida_por_id: ator.id,
+            resolvida_em: agora,
+          })
+          .where(and(eq(vindasDoCrm.clinica_id, clinicaId), eq(vindasDoCrm.id, vindaId)))
       },
     },
 

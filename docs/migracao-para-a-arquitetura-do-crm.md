@@ -71,8 +71,27 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
   com a data numa chamada só ficou dispensável, porque a entrega decide o segundo
   passo pela resposta.
 - **7b. Entrada pelo webhook do CRM:** o encaixe automático, a lista "Vindas do
-  CRM" e a agenda acompanhando o card. No CRM: o id do dentista da Clinicorp no
-  evento da consulta, e a agenda cadastra o webhook de cada clínica com a chave.
+  CRM" e a agenda acompanhando o card. Também não precisa mudar o CRM: a chave lê
+  a consulta da Clinicorp com o dentista (`GET /cards/{id}/consultas`), o id dela
+  mesma (`GET /eu`) e cadastra o webhook da clínica (`POST /webhooks`). Desenho:
+  - **Ligar ao CRM** (o gestor, nas Configurações): a agenda cadastra o webhook
+    da clínica (`card.criado`, `card.movido` e `card.alterado`) e guarda o segredo cifrado
+    (`AGENDA_URL` e `AGENDA_CHAVE_CIFRAGEM` no `.env`).
+  - **Receber:** `POST /api/v1/crm/avisos` confere a assinatura (`X-CRM-Assinatura`)
+    com o segredo da clínica, guarda o aviso em `entradas_do_crm` (o repetido é
+    ignorado pelo número da entrega) e responde na hora. O worker processa.
+  - **O aviso da própria agenda** (o `ator.id` é a chave dela) é ignorado.
+  - **Card em Agendados com data** (movido para Agendados, data mudada, ou a
+    consulta da Clinicorp registrada): sem consulta ligada ao card, nasce uma
+    "vinda" e a agenda tenta o encaixe: a unidade pelo `crm_unidade_id`, o
+    profissional pelo dentista da Clinicorp já ligado, o procedimento das vindas
+    da clínica, a duração da Clinicorp (ou a do procedimento) e a primeira cadeira
+    livre. Faltou algo, a vinda fica na lista com o motivo. Com consulta ligada e
+    data diferente, ela é remarcada; se não couber, vira uma vinda de remarcação.
+  - **Card em Cancelados, Faltosos ou no CRC2 (compareceu):** a consulta ligada
+    fica cancelada, com falta ou concluída, e a vinda pendente é descartada.
+  - **O que o CRM pediu não volta ao CRM:** a mudança entra pelos casos de uso da
+    agenda com o acesso do sistema de origem `crm`, que não grava aviso ao CRM.
 - **7c. Plataforma:** confirmação, lembrete, etiquetas e contato; a escolha do
   lembrete sincronizada (no CRM, o valor `agenda` e a rota da chave); a aba de
   integração das configurações e a conversa com o paciente no popover.
@@ -247,6 +266,35 @@ Na saída para o CRM (7a), em `src/modulos/crm`:
    e salvar a consulta pela tela não regrava esse campo nem o `lembrete_mensagem_id`.
 9. **Os avisos nascem com o instante do caso de uso** (`criado_em` e a primeira
    tentativa), e não com o relógio do banco.
+
+Na entrada do CRM (7b), em `src/modulos/crm` e `src/modulos/agenda/aplicacao/vindas.ts`:
+
+10. **O aviso só diz quando olhar; o que fazer sai do card de agora** (`GET
+    /cards/{id}`). O aviso atrasado ou repetido não desfaz o que veio depois: a
+    saída para Cancelados só cancela se o card ainda estiver lá.
+11. **O encaixe sozinho pede quatro coisas:** a unidade do card ligada a uma da
+    agenda (`crm_unidade_id`), o dentista da Clinicorp ligado a um profissional
+    (`id_no_prontuario`), o procedimento das vindas da clínica e o nome do
+    paciente. A duração é a da Clinicorp, se for múltiplo de 5; senão, a do
+    procedimento. A cadeira é a primeira livre, e vale encaixar fora do
+    expediente, como a recepção. O que faltar vira o `motivo` da vinda.
+12. **O que veio do CRM não volta ao CRM:** a consulta encaixada, remarcada,
+    cancelada ou concluída por um aviso entra com o acesso do sistema de origem
+    `crm`, que não grava aviso ao CRM (os avisos à plataforma continuam; a fase
+    7c decide o lembrete). A recepção, ao encaixar uma vinda, age como ela mesma,
+    e o CRM recebe o aviso normal, que não muda nada no card.
+13. **Encaixar ensina o vínculo:** o profissional que a recepção escolhe fica
+    ligado ao dentista da Clinicorp da vinda, se nenhum dos dois já tem par.
+14. **O compareceu do CRM conclui a consulta** (agendada, confirmada ou em
+    atendimento). O card que vai para outra coluna (Leads, Perda) só tira a vinda
+    pendente da lista: a consulta ligada fica como está.
+15. **Uma vinda pendente por card**, e o aviso do CRM é processado um de cada vez
+    por card, na ordem de chegada. A mesma entrega repetida entra uma vez só.
+16. **A assinatura vale por 10 minutos** para os dois lados, e a agenda guarda o
+    segredo do webhook cifrado (`AGENDA_CHAVE_CIFRAGEM`).
+17. **O procedimento das vindas não tem chave estrangeira** (o ciclo
+    clínicas ↔ procedimentos confunde os tipos do Drizzle): quem grava confere que
+    é da clínica; procedimento não se apaga, só se desativa.
 
 ## Decidido com a equipe (2026-10-07)
 

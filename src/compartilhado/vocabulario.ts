@@ -52,3 +52,21 @@ export type AcaoNaPlataforma = (typeof ACOES_NA_PLATAFORMA)[number]
 /** `falhou` é desistir depois das tentativas; `concluido` é entregue ou feito. */
 export const SITUACOES_DE_AVISO = ['pendente', 'concluido', 'falhou'] as const
 export type SituacaoDeAviso = (typeof SITUACOES_DE_AVISO)[number]
+
+// ── Entrada do CRM (fase 7b) ─────────────────────────────────────────────────
+
+/** Os eventos do webhook do CRM que a agenda assina. */
+export const EVENTOS_DO_CRM = ['card.criado', 'card.movido', 'card.alterado'] as const
+export type EventoDoCrm = (typeof EVENTOS_DO_CRM)[number]
+
+/** `ignorado` é o aviso que não pede nada à agenda (o da própria agenda, um campo que ela não usa). */
+export const SITUACOES_DE_ENTRADA = ['pendente', 'processado', 'ignorado', 'falhou'] as const
+export type SituacaoDeEntrada = (typeof SITUACOES_DE_ENTRADA)[number]
+
+/** A consulta que o CRM marcou fora da agenda: `marcar` uma nova, ou `remarcar` a que já está ligada ao card. */
+export const TIPOS_DE_VINDA = ['marcar', 'remarcar'] as const
+export type TipoDeVinda = (typeof TIPOS_DE_VINDA)[number]
+
+/** `encaixada` virou consulta (sozinha ou pela recepção); `descartada` não vai virar. */
+export const SITUACOES_DA_VINDA = ['pendente', 'encaixada', 'descartada'] as const
+export type SituacaoDaVinda = (typeof SITUACOES_DA_VINDA)[number]

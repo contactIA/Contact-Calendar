@@ -47,6 +47,12 @@ flowchart TD
   aviso na caixa de saída, na mesma transação da consulta, e o worker entrega pela
   API do CRM (`src/modulos/crm`), com novas tentativas. O card mostra a próxima
   consulta ativa do telefone.
+- **O que o CRM marca fora da agenda** (a CRC na Clinicorp, o botão, a IA) chega
+  pelo webhook do CRM, que a agenda cadastra ao ligar a clínica
+  (`POST /api/v1/crm/avisos`, com a assinatura conferida). O worker lê o card e
+  encaixa a consulta sozinho quando o dentista, a unidade e o procedimento das
+  vindas estão ligados; senão, ela espera na lista "Vindas do CRM". A consulta
+  ligada ao card acompanha a data, o cancelamento, a falta e o comparecimento.
 - **Mensagens:** as rotas antigas mandavam a confirmação e o lembrete e
   etiquetavam o contato na plataforma. Elas saíram em outubro de 2026; as
   mensagens voltam na fase 7, pela caixa de saída e pelo CRM.
@@ -200,6 +206,8 @@ AGENDA_SEGREDO_SESSAO=                # 32+ caracteres aleatórios; assina a ses
 EMBED_HOSTS=                          # hosts da plataforma que abrem a agenda (ex.: app.fluxodonto.com)
 CRM_URL=                              # o endereço do CRM (ex.: https://crm.contactia.com.br)
 CRM_CHAVE=                            # a chave crm_... da agenda: integração, com escrita, todas as clínicas
+AGENDA_URL=                           # o endereço público da agenda, para o webhook do CRM
+AGENDA_CHAVE_CIFRAGEM=                # 32 bytes em base64; cifra o segredo do webhook do CRM
 
 # Código antigo (só o onboarding público)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co

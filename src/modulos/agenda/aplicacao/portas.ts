@@ -1,5 +1,5 @@
 import type { Ator } from '@/modulos/acesso/aplicacao/acesso'
-import type { AcaoNaPlataforma, AvisoAoCrm, StatusDaConsulta, TipoDeEvento } from '@/compartilhado/vocabulario'
+import type { AcaoNaPlataforma, AvisoAoCrm, SituacaoDaVinda, StatusDaConsulta, TipoDeAtor, TipoDeEvento, TipoDeVinda } from '@/compartilhado/vocabulario'
 import type { Consulta } from '../dominio/consulta'
 import type { Janela } from '../dominio/disponibilidade'
 import type { Paciente } from '../dominio/paciente'
@@ -18,6 +18,25 @@ export interface ClinicaDaAgenda {
   lembreteAntecedenciaHoras: number
   sincronizarContatos: boolean
   etiquetas: { agendou: string | null; compareceu: string | null; faltou: string | null }
+  /** O procedimento da consulta que o CRM marca fora da agenda (fase 7b). */
+  procedimentoDasVindasId: string | null
+}
+
+/** A consulta que o CRM marcou fora da agenda e ainda não virou consulta aqui (fase 7b). */
+export interface VindaDoCrm {
+  id: string
+  clinicaId: string
+  crmCardId: string
+  tipo: TipoDeVinda
+  situacao: SituacaoDaVinda
+  unidadeId: string | null
+  nome: string | null
+  telefone: string
+  inicio: Date
+  fim: Date | null
+  profissionalNoProntuario: { id: string; nome: string | null } | null
+  motivo: string | null
+  consultaId: string | null
 }
 
 export interface Unidade {
@@ -89,6 +108,12 @@ export interface Repositorios {
     /** As cadeiras ativas da unidade, em ordem de nome. */
     cadeirasAtivas(clinicaId: string, unidadeId: string): Promise<Cadeira[]>
     expedientes(clinicaId: string, unidadeId: string, diaSemana: number, profissionalIds: string[]): Promise<IntervaloDoExpediente[]>
+    /** A unidade ativa ligada à unidade do CRM. */
+    unidadePeloCrm(clinicaId: string, crmUnidadeId: string): Promise<Unidade | null>
+    /** O profissional ativo ligado ao dentista do prontuário. */
+    profissionalNoProntuario(clinicaId: string, idNoProntuario: string): Promise<{ id: string; nome: string } | null>
+    /** Liga o profissional ao dentista do prontuário, se nenhum dos dois já tem par. Diz se ligou. */
+    ligarAoProntuario(clinicaId: string, profissionalId: string, idNoProntuario: string): Promise<boolean>
   }
   ocupacoes: {
     /** As consultas que ocupam o horário, em qualquer unidade, e os bloqueios de cada profissional no período. */
@@ -107,6 +132,21 @@ export interface Repositorios {
     proximaDosPacientes(clinicaId: string, pacienteIds: string[], agora: Date): Promise<Consulta | null>
     /** Quem já atendeu os pacientes (consulta em atendimento ou concluída). */
     profissionaisQueAtenderam(clinicaId: string, pacienteIds: string[]): Promise<string[]>
+    /** A consulta ligada ao card do CRM, nos status pedidos: a mais recente. */
+    ligadaAoCard(clinicaId: string, crmCardId: string, status: readonly StatusDaConsulta[]): Promise<Consulta | null>
+  }
+  vindas: {
+    /** A vinda pendente do card, travada até o fim da transação. */
+    pendenteDoCard(clinicaId: string, crmCardId: string): Promise<VindaDoCrm | null>
+    obter(clinicaId: string, vindaId: string, opcoes?: { travar?: boolean }): Promise<VindaDoCrm | null>
+    /** Grava a vinda nova ou muda a que já existe (pelo id). */
+    salvar(vinda: VindaDoCrm): Promise<void>
+    /** Fecha a vinda: encaixada (com a consulta) ou descartada. */
+    resolver(
+      clinicaId: string,
+      vindaId: string,
+      resolucao: { situacao: 'encaixada' | 'descartada'; consultaId?: string | null; motivo?: string | null; ator: { tipo: TipoDeAtor; id: string | null }; agora: Date }
+    ): Promise<void>
   }
   pacientes: {
     obter(clinicaId: string, pacienteId: string): Promise<Paciente | null>
@@ -174,4 +214,23 @@ export interface LeiturasDaAgenda {
   listarPacientes(clinicaId: string, filtro: { busca: string | null; limite: number; deslocamento: number }): Promise<{ pacientes: PacienteDaLista[]; total: number }>
   /** Todas as consultas do paciente, da mais recente para a mais antiga. */
   consultasDoPaciente(clinicaId: string, pacienteId: string): Promise<ConsultaNaAgenda[]>
+  /** As vindas do CRM que esperam a recepção, pelo horário. `null`: todas as unidades. */
+  vindasPendentes(clinicaId: string, unidadeIds: string[] | null): Promise<VindaNaLista[]>
+}
+
+/** A vinda do CRM na lista da recepção (fase 7b). */
+export interface VindaNaLista {
+  id: string
+  tipo: TipoDeVinda
+  motivo: string | null
+  crmCardId: string
+  unidade: { id: string; nome: string } | null
+  nome: string | null
+  telefone: string
+  inicio: Date
+  fim: Date | null
+  profissionalNoProntuario: { id: string; nome: string | null } | null
+  /** Na remarcação, a consulta como está hoje na agenda. */
+  consultaAtual: { id: string; inicio: Date; profissional: { id: string; nome: string } } | null
+  criadoEm: Date
 }

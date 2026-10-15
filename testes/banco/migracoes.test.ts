@@ -90,11 +90,11 @@ const recusaConsulta = (c: Clinica, x: Consulta, codigo: string, restricao: stri
 describe('migrações', () => {
   it('aplicam do zero e ficam registradas no esquema agenda', async () => {
     const { total } = await um<{ total: number }>(`select count(*)::int as total from agenda.__drizzle_migrations`)
-    expect(total).toBe(2)
+    expect(total).toBe(3)
     const { tabelas } = await um<{ tabelas: number }>(
       `select count(*)::int as tabelas from pg_tables where schemaname = 'agenda' and tablename <> '__drizzle_migrations'`
     )
-    expect(tabelas).toBe(17)
+    expect(tabelas).toBe(19)
   })
 
   it('toda tabela tem RLS ligado e nenhuma política', async () => {
@@ -353,5 +353,49 @@ describe('histórico e caixa de saída', () => {
     await recusa(SQL, [c.clinica, c.maria, 'crm', 'enviar_confirmacao'], VIOLA_CHECK, 'caixa_de_saida_tipo_do_destino')
     await recusa(SQL, [c.clinica, c.maria, 'plataforma', 'consulta_criada'], VIOLA_CHECK, 'caixa_de_saida_tipo_do_destino')
     await recusa(SQL, [c.clinica, c.maria, 'email', 'consulta_criada'], VIOLA_CHECK, 'caixa_de_saida_destino')
+  })
+})
+
+describe('entrada do CRM (fase 7b)', () => {
+  const VINDA = `insert into agenda.vindas_do_crm (clinica_id, crm_card_id, telefone, inicio, situacao) values ($1, $2, $3, '2026-10-08T13:00:00Z', $4)`
+
+  it('uma vinda pendente por card; as resolvidas não contam', async () => {
+    const c = await montarClinica()
+    const card = crypto.randomUUID()
+    await pg.query(VINDA, [c.clinica, card, '+5562999990000', 'descartada'])
+    await pg.query(VINDA, [c.clinica, card, '+5562999990000', 'pendente'])
+    await recusa(VINDA, [c.clinica, card, '+5562999990000', 'pendente'], VIOLA_UNICO, 'vindas_do_crm_pendente_do_card')
+  })
+
+  it('a vinda só aceita telefone E.164 e situação da lista', async () => {
+    const c = await montarClinica()
+    await recusa(VINDA, [c.clinica, crypto.randomUUID(), '62999990000', 'pendente'], VIOLA_CHECK, 'vindas_do_crm_telefone_e164')
+    await recusa(VINDA, [c.clinica, crypto.randomUUID(), '+5562999990000', 'esquecida'], VIOLA_CHECK, 'vindas_do_crm_situacao')
+  })
+
+  it('a unidade da vinda é da mesma clínica', async () => {
+    const c = await montarClinica()
+    const outra = await montarClinica()
+    await recusa(
+      `insert into agenda.vindas_do_crm (clinica_id, crm_card_id, telefone, inicio, unidade_id) values ($1, $2, '+5562999990000', now(), $3)`,
+      [c.clinica, crypto.randomUUID(), outra.unidadeA],
+      VIOLA_CHAVE,
+      'vindas_do_crm_unidade_da_clinica'
+    )
+  })
+
+  it('o dentista do prontuário liga a um profissional só na clínica', async () => {
+    const c = await montarClinica()
+    await pg.query(`update agenda.profissionais set id_no_prontuario = 'clinicorp-1' where id = $1`, [c.ana])
+    await recusa(`update agenda.profissionais set id_no_prontuario = 'clinicorp-1' where id = $1`, [c.bruno], VIOLA_UNICO, 'profissionais_no_prontuario')
+    const outra = await montarClinica()
+    await pg.query(`update agenda.profissionais set id_no_prontuario = 'clinicorp-1' where id = $1`, [outra.ana])
+  })
+
+  it('a mesma entrega do CRM entra uma vez só', async () => {
+    const c = await montarClinica()
+    const ENTRADA = `insert into agenda.entradas_do_crm (clinica_id, entrega_id, evento, tipo, corpo) values ($1, 42, 'card.movido', 'movido', '{}')`
+    await pg.query(ENTRADA, [c.clinica])
+    await recusa(ENTRADA, [c.clinica], VIOLA_UNICO, 'entradas_do_crm_entrega')
   })
 })

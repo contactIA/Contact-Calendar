@@ -63,7 +63,12 @@ export interface PedidoDeAgendamento {
   cadeiraId?: string
   observacoes?: string | null
   paciente: ReferenciaDoPaciente
+  /** O card do CRM, quando quem marca é o próprio CRM (fase 7b): a consulta já nasce ligada a ele. */
+  crmCardId?: string
 }
+
+/** A mudança que veio de um aviso do CRM: ela não gera aviso de volta ao CRM. */
+const vemDoCrm = (acesso: Acesso) => acesso.tipo === 'sistema' && acesso.origem === 'crm'
 
 export interface PedidoDeRemarcacao {
   inicio: Date
@@ -178,6 +183,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
 
   /** O que cabe enfileirar para o CRM e a plataforma, com o que a clínica configurou. */
   function avisosConfigurados(
+    acesso: Acesso,
     avisos: Aviso[],
     clinica: ClinicaDaAgenda,
     consulta: Consulta,
@@ -202,7 +208,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     const enfileirar: NovoAviso[] = []
     for (const aviso of avisos) {
       if (aviso.destino === 'crm') {
-        if (clinica.ligadaAoCrm) enfileirar.push({ ...base, destino: 'crm', tipo: aviso.tipo, dados })
+        if (clinica.ligadaAoCrm && !vemDoCrm(acesso)) enfileirar.push({ ...base, destino: 'crm', tipo: aviso.tipo, dados })
         continue
       }
       if (aviso.tipo === 'enviar_confirmacao' && !clinica.confirmacaoModeloId) continue
@@ -361,7 +367,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     const avisos = avisosDaMudanca(consulta.status, para)
     if (avisos.length) {
       const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
-      await r.caixa.enfileirar(avisosConfigurados(avisos, clinica, gravada, paciente, await contextoDosAvisos(r, acesso, gravada)), agora)
+      await r.caixa.enfileirar(avisosConfigurados(acesso, avisos, clinica, gravada, paciente, await contextoDosAvisos(r, acesso, gravada)), agora)
     }
     return gravada
   }
@@ -413,7 +419,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     ])
     const paciente = (await r.pacientes.obter(clinica.id, consulta.pacienteId))!
     await r.caixa.enfileirar(
-      avisosConfigurados(avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
+      avisosConfigurados(acesso, avisosDaRemarcacao(), clinica, gravada, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
       agora
     )
     return gravada
@@ -513,7 +519,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
           criadaPorId: ator.id,
           canceladaEm: null,
           motivoCancelamento: null,
-          crmCardId: null,
+          crmCardId: vemDoCrm(acesso) ? (pedido.crmCardId ?? null) : null,
           lembreteMensagemId: null,
           versao: 1,
         }
@@ -530,7 +536,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
           },
         ])
         await r.caixa.enfileirar(
-          avisosConfigurados(avisosDoAgendamento(), clinica, consulta, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
+          avisosConfigurados(acesso, avisosDoAgendamento(), clinica, consulta, paciente, { unidade, profissionalNome: profissional.nome, procedimentoNome: procedimento.nome }),
           agora
         )
         return { consulta, paciente }

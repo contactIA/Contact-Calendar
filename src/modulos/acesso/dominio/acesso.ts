@@ -45,6 +45,8 @@ export interface AcessoDeChave {
 export interface AcessoDoSistema {
   tipo: 'sistema'
   clinicaId: string
+  /** `crm`: a mudança veio de um aviso do CRM (fase 7b), e não volta a ele. */
+  origem?: 'crm'
 }
 
 export type Acesso = AcessoDeUsuario | AcessoDeChave | AcessoDoSistema

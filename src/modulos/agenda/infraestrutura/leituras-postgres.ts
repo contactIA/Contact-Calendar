@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, gt, inArray, lt, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { StatusDaConsulta } from '@/compartilhado/vocabulario'
 import type { Banco } from '@/infra/banco/conexao'
-import { cadeiras, consultas, pacientes, procedimentos, profissionais, unidades } from '@/infra/banco/esquema'
-import type { ConsultaNaAgenda, LeiturasDaAgenda } from '../aplicacao/portas'
+import { cadeiras, consultas, pacientes, procedimentos, profissionais, unidades, vindasDoCrm } from '@/infra/banco/esquema'
+import type { ConsultaNaAgenda, LeiturasDaAgenda, VindaNaLista } from '../aplicacao/portas'
 
 // As leituras da agenda no formato da tela: consultas dedicadas, sem montar as
 // entidades do domínio (como no CRM).
@@ -127,6 +127,42 @@ export function leiturasDaAgendaPostgres(db: Banco): LeiturasDaAgenda {
     async consultasDoPaciente(clinicaId, pacienteId) {
       const linhas = await consultasCom(db, and(eq(consultas.clinica_id, clinicaId), eq(consultas.paciente_id, pacienteId))).orderBy(desc(consultas.inicio))
       return linhas.map(paraConsultaNaAgenda)
+    },
+
+    async vindasPendentes(clinicaId, unidadeIds) {
+      // A vinda sem unidade aparece para todos: ninguém mais saberia dela.
+      const daUnidade = unidadeIds === null ? undefined : unidadeIds.length ? or(isNull(vindasDoCrm.unidade_id), inArray(vindasDoCrm.unidade_id, unidadeIds)) : isNull(vindasDoCrm.unidade_id)
+      const linhas = await db
+        .select({
+          vinda: vindasDoCrm,
+          unidadeNome: unidades.nome,
+          consultaInicio: consultas.inicio,
+          profissionalId: profissionais.id,
+          profissionalNome: profissionais.nome,
+        })
+        .from(vindasDoCrm)
+        .leftJoin(unidades, and(eq(unidades.clinica_id, vindasDoCrm.clinica_id), eq(unidades.id, vindasDoCrm.unidade_id)))
+        .leftJoin(consultas, and(eq(consultas.clinica_id, vindasDoCrm.clinica_id), eq(consultas.id, vindasDoCrm.consulta_id)))
+        .leftJoin(profissionais, and(eq(profissionais.clinica_id, consultas.clinica_id), eq(profissionais.id, consultas.profissional_id)))
+        .where(and(eq(vindasDoCrm.clinica_id, clinicaId), eq(vindasDoCrm.situacao, 'pendente'), daUnidade))
+        .orderBy(asc(vindasDoCrm.inicio))
+      return linhas.map(({ vinda: v, unidadeNome, consultaInicio, profissionalId, profissionalNome }): VindaNaLista => ({
+        id: v.id,
+        tipo: v.tipo as VindaNaLista['tipo'],
+        motivo: v.motivo,
+        crmCardId: v.crm_card_id,
+        unidade: v.unidade_id && unidadeNome ? { id: v.unidade_id, nome: unidadeNome } : null,
+        nome: v.nome,
+        telefone: v.telefone,
+        inicio: v.inicio,
+        fim: v.fim,
+        profissionalNoProntuario: v.profissional_no_prontuario_id ? { id: v.profissional_no_prontuario_id, nome: v.profissional_no_prontuario_nome } : null,
+        consultaAtual:
+          v.consulta_id && consultaInicio && profissionalId && profissionalNome
+            ? { id: v.consulta_id, inicio: consultaInicio, profissional: { id: profissionalId, nome: profissionalNome } }
+            : null,
+        criadoEm: v.criado_em,
+      }))
     },
   }
 }

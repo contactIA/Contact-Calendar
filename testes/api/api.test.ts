@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { criarApi, ORIGENS_DA_DOCUMENTACAO } from '@/api/app'
+import { ErroDeDominio } from '@/compartilhado/erros'
 import type { CasosDeUso } from '@/composicao'
 
 // A API sem banco: os casos de uso entram de mentira, para testar só o HTTP.
@@ -49,5 +50,32 @@ describe('API', () => {
 
     const deOutroLugar = await api.request('/api/v1/saude', { headers: { Origin: 'https://exemplo.com' } })
     expect(deOutroLugar.headers.get('Access-Control-Allow-Origin')).toBeNull()
+  })
+
+  it('o aviso do CRM chega cru ao caso de uso, com o cabeçalho da assinatura; a recusa sai no formato de erro', async () => {
+    const recebidos: [string, string | null][] = []
+    const receberAviso = async (texto: string, assinatura: string | null) => {
+      recebidos.push([texto, assinatura])
+      if (!assinatura) throw new ErroDeDominio('nao_autenticado', 'ASSINATURA_INVALIDA', 'Falta a assinatura do CRM, ou ela não confere')
+      return 'novo' as const
+    }
+    const api = criarApi(() => ({ crm: { receberAviso } }) as unknown as CasosDeUso)
+    const corpo = '{"id":1,  "evento":"card.movido"}'
+    const aceito = await api.request('/api/v1/crm/avisos', { method: 'POST', body: corpo, headers: { 'Content-Type': 'application/json', 'X-CRM-Assinatura': 't=1,v1=ab' } })
+    expect(aceito.status).toBe(200)
+    expect(await aceito.json()).toEqual({ ok: true, resultado: 'novo' })
+    expect(recebidos[0]).toEqual([corpo, 't=1,v1=ab'])
+
+    const recusado = await api.request('/api/v1/crm/avisos', { method: 'POST', body: corpo })
+    expect(recusado.status).toBe(401)
+    expect(await recusado.json()).toEqual({ erro: 'Falta a assinatura do CRM, ou ela não confere', codigo: 'ASSINATURA_INVALIDA' })
+  })
+
+  it('as rotas da ligação com o CRM e das vindas ficam fora do contrato de quem integra', async () => {
+    const api = criarApi(() => {
+      throw new Error('o contrato não usa os casos de uso')
+    })
+    const contrato = (await (await api.request('/api/openapi.json')).json()) as { paths: Record<string, unknown> }
+    expect(Object.keys(contrato.paths).filter((c) => c.includes('/crm/') || c.includes('/vindas'))).toEqual([])
   })
 })

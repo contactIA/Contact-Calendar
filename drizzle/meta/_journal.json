@@ -15,6 +15,13 @@
       "when": 1791383799274,
       "tag": "0001_regras_de_horario",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792074521687,
+      "tag": "0002_entrada_do_crm",
+      "breakpoints": true
     }
   ]
 }

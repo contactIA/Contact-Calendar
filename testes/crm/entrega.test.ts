@@ -2,77 +2,15 @@ import type { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { montarCasosDeUso } from '@/composicao'
 import type { Banco } from '@/infra/banco/conexao'
-import type { ApiDoCrm, CardNoCrm } from '@/modulos/crm/aplicacao/portas'
 import { ErroDoCrm } from '@/modulos/crm/dominio/entrega'
 import { montarClinicaDaAgenda, type ClinicaDaAgenda } from '../apoio/agenda'
+import { crmDeMentira } from '../apoio/crm'
 import { bancoDeTeste, relogioDeTeste } from '../apoio/banco'
 
 // A entrega dos avisos ao CRM (fase 7) de ponta a ponta: os casos de uso da
 // agenda gravam a caixa de saída no PGlite, e o worker entrega a um CRM de
 // mentira, que se comporta como a API v1 (um card aberto por telefone, as
 // recusas com o código). Agora é quarta, 07/10/2026, 9h em São Paulo.
-
-interface CardFalso extends CardNoCrm {
-  telefone: string
-  painel: 'crc1' | 'crc2'
-  aberto: boolean
-}
-
-function crmDeMentira() {
-  const cards = new Map<string, CardFalso>()
-  const chamadas: string[] = []
-  let falha: ErroDoCrm | null = null
-  const hora = (d?: Date) => (d ? ` ${d.toISOString()}` : '')
-  const abertoDo = (telefone: string) => [...cards.values()].find((c) => c.telefone === telefone && c.aberto)
-  const doCard = (c: CardFalso): CardNoCrm => ({ id: c.id, etapa: c.etapa, agendadoPara: c.agendadoPara })
-  const conferir = (id: string) => {
-    const card = cards.get(id)
-    if (!card) throw new ErroDoCrm(404, 'CARD_NAO_ENCONTRADO', 'Card não encontrado')
-    if (!card.aberto) throw new ErroDoCrm(409, 'CARD_NAO_ESTA_ABERTO', 'O card não está aberto')
-    return card
-  }
-  const api: ApiDoCrm = {
-    async criarCard(companyId, pedido) {
-      chamadas.push(`criar ${pedido.etapa}`)
-      if (falha) throw falha
-      const aberto = abertoDo(pedido.telefone)
-      if (aberto) return doCard(aberto)
-      const card: CardFalso = { id: crypto.randomUUID(), etapa: pedido.etapa, agendadoPara: null, telefone: pedido.telefone, painel: 'crc1', aberto: true }
-      cards.set(card.id, card)
-      return doCard(card)
-    },
-    async cardAbertoDoContato(companyId, telefone) {
-      chamadas.push('do-contato')
-      if (falha) throw falha
-      const aberto = abertoDo(telefone)
-      return aberto ? doCard(aberto) : null
-    },
-    async mover(companyId, cardId, pedido) {
-      chamadas.push(`mover ${pedido.etapa}${hora(pedido.agendadoPara)}${pedido.agendadoEm ? ' (com agendadoEm)' : ''}`)
-      if (falha) throw falha
-      const card = conferir(cardId)
-      if (card.painel !== 'crc1') throw new ErroDoCrm(400, 'MOVER_ENTRE_PAINEIS', 'Outro painel')
-      card.etapa = pedido.etapa
-      if (pedido.agendadoPara) card.agendadoPara = pedido.agendadoPara
-    },
-    async compareceu(companyId, cardId) {
-      chamadas.push('compareceu')
-      if (falha) throw falha
-      const card = conferir(cardId)
-      if (card.painel === 'crc2') throw new ErroDoCrm(409, 'JA_ESTA_EM_OUTRO_PAINEL', 'Já está no CRC2')
-      card.painel = 'crc2'
-      card.etapa = 'avaliacao'
-    },
-  }
-  return {
-    api,
-    cards,
-    chamadas,
-    falhar(erro: ErroDoCrm | null) {
-      falha = erro
-    },
-  }
-}
 
 let pg: PGlite
 let banco: Banco
@@ -89,9 +27,7 @@ afterAll(() => pg.close())
 beforeEach(async () => {
   // Cada teste começa com a caixa vazia, o CRM limpo e o relógio na quarta, 9h.
   await pg.query(`update agenda.caixa_de_saida set situacao = 'concluido' where situacao = 'pendente'`)
-  crm.cards.clear()
-  crm.chamadas.length = 0
-  crm.falhar(null)
+  crm.limpar()
   relogio.definir(new Date('2026-10-07T12:00:00Z'))
 })
 

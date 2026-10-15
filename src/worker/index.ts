@@ -11,8 +11,9 @@ loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production')
 // processo (`npm run worker`).
 //
 //   · Ciclos curtos, a cada poucos segundos, como no CRM: entregar ao CRM os
-//     avisos da caixa de saída (fase 7). Cada ciclo reserva o que vai fazer no
-//     banco (for update skip locked), então dois workers não fazem a mesma coisa.
+//     avisos da caixa de saída (fase 7a) e processar os avisos que o CRM mandou
+//     (fase 7b). Cada ciclo reserva o que vai fazer no banco (for update skip
+//     locked), então dois workers não fazem a mesma coisa.
 //   · A fila (pg-boss) fica no ar para as rotinas com horário que vierem depois.
 
 interface Ciclo {
@@ -47,7 +48,10 @@ async function main() {
   if (!process.env.CRM_URL || !process.env.CRM_CHAVE) {
     console.warn('[worker] sem CRM_URL e CRM_CHAVE: os avisos ao CRM esperam na caixa de saída')
   }
-  const ciclos: Ciclo[] = [{ nome: 'avisos ao CRM', intervaloMs: 3_000, fazer: () => casos.crm.entregarPendentes() }]
+  const ciclos: Ciclo[] = [
+    { nome: 'avisos ao CRM', intervaloMs: 3_000, fazer: () => casos.crm.entregarPendentes() },
+    { nome: 'avisos do CRM', intervaloMs: 3_000, fazer: () => casos.crm.processarEntradas() },
+  ]
   const rodando = ciclos.map(rodarCiclo)
   console.info('[worker] no ar')
 

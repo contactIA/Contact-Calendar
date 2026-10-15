@@ -8,6 +8,7 @@ import { novoRoteador } from './roteador'
 import { rotasDaAgenda } from './v1/agenda'
 import { rotasDoAgente } from './v1/agente'
 import { rotasDosCadastros } from './v1/cadastros'
+import { rotasDoCrm } from './v1/crm'
 import { rotasDoEu } from './v1/eu'
 import { rotasDoSistema } from './v1/sistema'
 import { VERSAO_DA_API } from './versao'
@@ -131,7 +132,7 @@ export function criarApi(obterCasos: () => CasosDeUso = casosDeUso) {
     description: 'Só para a chave que alcança mais de uma clínica: o id da clínica ou o companyId da conta. Com uma clínica só, deixe vazio',
   })
 
-  for (const rotas of [rotasDoSistema, rotasDoEu, rotasDaAgenda, rotasDoAgente, rotasDosCadastros]) {
+  for (const rotas of [rotasDoSistema, rotasDoEu, rotasDaAgenda, rotasDoAgente, rotasDosCadastros, rotasDoCrm]) {
     api.route('/v1', rotas)
   }
 

@@ -166,3 +166,31 @@ export type ExpedienteJson = z.infer<typeof Expediente>
 export type BloqueioJson = z.infer<typeof Bloqueio>
 export type ChaveJson = z.infer<typeof Chave>
 export type EuJson = z.infer<typeof Eu>
+
+// ── Ligação com o CRM (fase 7b) ──────────────────────────────────────────────
+
+export const LigacaoComOCrm = z
+  .object({
+    ligada: z.boolean().openapi({ description: 'A agenda avisa o CRM do que acontece com as consultas' }),
+    recebeAvisos: z.boolean().openapi({ description: 'O CRM avisa a agenda pelo webhook da clínica' }),
+    podeLigar: z.boolean().openapi({ description: 'O servidor tem o endereço e a chave do CRM' }),
+  })
+  .openapi('LigacaoComOCrm')
+
+/** A consulta que o CRM marcou fora da agenda e espera a recepção. */
+export const Vinda = z
+  .object({
+    id: Id,
+    tipo: z.enum(['marcar', 'remarcar']),
+    motivo: z.string().nullable().openapi({ description: 'Por que não entrou sozinha (ex.: DENTISTA_SEM_VINCULO, HORARIO_DO_PROFISSIONAL_OCUPADO)' }),
+    crmCardId: Id,
+    unidade: Referencia.nullable(),
+    nome: z.string().nullable(),
+    telefone: z.string(),
+    inicio: Instante,
+    fim: Instante.nullable(),
+    profissionalNoProntuario: z.object({ id: z.string(), nome: z.string().nullable() }).nullable(),
+    consultaAtual: z.object({ id: Id, inicio: Instante, profissional: Referencia }).nullable(),
+    criadoEm: Instante,
+  })
+  .openapi('Vinda')

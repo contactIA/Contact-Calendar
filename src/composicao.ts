@@ -12,12 +12,15 @@ import {
 import { casosDosCadastros } from '@/modulos/cadastros/aplicacao/casos'
 import { cadastrosNoPostgres } from '@/modulos/cadastros/infraestrutura/repositorio-postgres'
 import { casosDaAgenda } from '@/modulos/agenda/aplicacao/casos'
+import { casosDasVindas } from '@/modulos/agenda/aplicacao/vindas'
 import { leiturasDaAgendaPostgres } from '@/modulos/agenda/infraestrutura/leituras-postgres'
 import { unidadeDeTrabalhoPostgres } from '@/modulos/agenda/infraestrutura/repositorios-postgres'
 import { casosDoCrm } from '@/modulos/crm/aplicacao/casos'
-import type { ApiDoCrm } from '@/modulos/crm/aplicacao/portas'
+import { casosDaEntradaDoCrm } from '@/modulos/crm/aplicacao/entrada'
+import type { ApiDoCrm, Cifra } from '@/modulos/crm/aplicacao/portas'
 import { apiDoCrmHttp, lerConfiguracaoDoCrm } from '@/modulos/crm/infraestrutura/api-do-crm-http'
 import { caixaDoCrmPostgres } from '@/modulos/crm/infraestrutura/caixa-postgres'
+import { assinadorDoCrm, cifraDoEnv, clinicasNoCrmPostgres, entradasDoCrmPostgres } from '@/modulos/crm/infraestrutura/entrada-postgres'
 
 // Raiz de composição (ADR 0001, como no CRM): o único lugar que liga cada porta
 // ao seu adaptador. As rotas da API, as páginas e o worker pedem os casos de uso
@@ -44,6 +47,10 @@ export interface Dependencias {
   sessao?: AmbienteDaSessao
   /** A API do CRM (CRM_URL e CRM_CHAVE); sem ela, os avisos ao CRM esperam na caixa de saída. */
   apiDoCrm?: ApiDoCrm | null
+  /** AGENDA_URL: o endereço público da agenda, para o webhook do CRM. */
+  urlDaAgenda?: string | null
+  /** Sem ela, a do .env (AGENDA_CHAVE_CIFRAGEM). */
+  cifra?: Cifra
 }
 
 export function lerAmbienteDaSessao(env = process.env): AmbienteDaSessao {
@@ -54,7 +61,11 @@ export function lerAmbienteDaSessao(env = process.env): AmbienteDaSessao {
   }
 }
 
-export function montarCasosDeUso({ banco, relogio, gerarId, sessao, apiDoCrm = null }: Dependencias) {
+export function montarCasosDeUso({ banco, relogio, gerarId, sessao, apiDoCrm = null, urlDaAgenda = null, cifra = cifraDoEnv }: Dependencias) {
+  const uow = unidadeDeTrabalhoPostgres(banco)
+  const leituras = leiturasDaAgendaPostgres(banco)
+  const agenda = casosDaAgenda({ uow, leituras, relogio, gerarId })
+  const vindas = casosDasVindas({ uow, leituras, agenda, relogio, gerarId })
   return {
     sistema: {
       bancoResponde: () => bancoResponde(banco),
@@ -73,8 +84,21 @@ export function montarCasosDeUso({ banco, relogio, gerarId, sessao, apiDoCrm = n
       },
     }),
     cadastros: casosDosCadastros({ banco: cadastrosNoPostgres(banco), gerarId }),
-    agenda: casosDaAgenda({ uow: unidadeDeTrabalhoPostgres(banco), leituras: leiturasDaAgendaPostgres(banco), relogio, gerarId }),
-    crm: casosDoCrm({ caixa: caixaDoCrmPostgres(banco), api: apiDoCrm, relogio }),
+    agenda,
+    vindas,
+    crm: {
+      ...casosDoCrm({ caixa: caixaDoCrmPostgres(banco), api: apiDoCrm, relogio }),
+      ...casosDaEntradaDoCrm({
+        api: apiDoCrm,
+        entradas: entradasDoCrmPostgres(banco),
+        clinicas: clinicasNoCrmPostgres(banco),
+        vindas,
+        cifra,
+        assinador: assinadorDoCrm,
+        relogio,
+        urlDaAgenda,
+      }),
+    },
   }
 }
 
@@ -88,7 +112,13 @@ let padrao: CasosDeUso | null = null
 export function casosDeUso(): CasosDeUso {
   if (!padrao) {
     const crm = lerConfiguracaoDoCrm()
-    padrao = montarCasosDeUso({ banco: obterBanco(), relogio, sessao: lerAmbienteDaSessao(), apiDoCrm: crm ? apiDoCrmHttp(crm) : null })
+    padrao = montarCasosDeUso({
+      banco: obterBanco(),
+      relogio,
+      sessao: lerAmbienteDaSessao(),
+      apiDoCrm: crm ? apiDoCrmHttp(crm) : null,
+      urlDaAgenda: process.env.AGENDA_URL?.trim().replace(/\/+$/, '') || null,
+    })
   }
   return padrao
 }

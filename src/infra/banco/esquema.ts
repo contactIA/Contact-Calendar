@@ -25,12 +25,15 @@ import {
   AVISOS_AO_CRM,
   CADENCIAS_DA_GRADE,
   DESTINOS_DE_AVISO,
+  SITUACOES_DA_VINDA,
   SITUACOES_DE_AVISO,
+  SITUACOES_DE_ENTRADA,
   STATUS_DA_CONSULTA,
   TIPOS_DE_ATOR,
   TIPOS_DE_BLOQUEIO,
   TIPOS_DE_CHAVE_API,
   TIPOS_DE_EVENTO,
+  TIPOS_DE_VINDA,
 } from '../../compartilhado/vocabulario'
 
 // O modelo de dados da agenda (docs/modelo-de-dados.md), no esquema `agenda` do
@@ -97,6 +100,16 @@ export const clinicas = agenda
       etiqueta_faltou_id: text(),
       /** Só manda avisos ao CRM quando ligada. */
       ligada_ao_crm: boolean().notNull().default(false),
+      /** O webhook que a agenda cadastrou no CRM para esta clínica (fase 7b), e o segredo dele, cifrado. */
+      crm_webhook_id: text(),
+      crm_webhook_segredo_cifrado: text(),
+      /**
+       * O procedimento da consulta que o CRM marca fora da agenda; sem ele, a vinda
+       * espera a recepção. Sem chave estrangeira (procedimentos aponta para clinicas,
+       * e o ciclo confunde os tipos do Drizzle): quem grava confere que é da clínica,
+       * e procedimento não se apaga, só se desativa.
+       */
+      procedimento_das_vindas_id: uuid(),
       criado_em: criadoEm(),
       atualizado_em: atualizadoEm(),
     },
@@ -286,12 +299,15 @@ export const profissionais = agenda
       cro: text(),
       cor: text().notNull().default('#3B82F6'),
       usuario_id: uuid(),
+      /** O dentista no prontuário (a Clinicorp), para a consulta que o CRM marca lá entrar sozinha aqui. */
+      id_no_prontuario: text(),
       ativo: boolean().notNull().default(true),
       criado_em: criadoEm(),
       atualizado_em: atualizadoEm(),
     },
     (t) => [
       unique('profissionais_da_clinica').on(t.clinica_id, t.id),
+      uniqueIndex('profissionais_no_prontuario').on(t.clinica_id, t.id_no_prontuario).where(sql`${t.id_no_prontuario} is not null`),
       /** Um usuário é no máximo um profissional. */
       uniqueIndex('profissionais_usuario').on(t.clinica_id, t.usuario_id).where(sql`${t.usuario_id} is not null`),
       foreignKey({ name: 'profissionais_usuario_da_clinica', columns: [t.clinica_id, t.usuario_id], foreignColumns: [usuarios.clinica_id, usuarios.id] }),
@@ -567,6 +583,98 @@ export const caixaDeSaida = agenda
       ),
       check('caixa_de_saida_situacao', emLista(t.situacao, SITUACOES_DE_AVISO)),
       check('caixa_de_saida_tentativas', sql`${t.tentativas} >= 0`),
+    ]
+  )
+  .enableRLS()
+
+// ── Entrada do CRM (fase 7b) ─────────────────────────────────────────────────
+
+/**
+ * Os avisos que o webhook do CRM mandou. A rota guarda e responde na hora; o
+ * worker processa. O repetido (a mesma entrega, de novo) é ignorado pelo número.
+ */
+export const entradasDoCrm = agenda
+  .table(
+    'entradas_do_crm',
+    {
+      id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+      clinica_id: uuid()
+        .notNull()
+        .references(() => clinicas.id),
+      /** O número da entrega no CRM (o `id` do corpo). */
+      entrega_id: bigint({ mode: 'number' }).notNull(),
+      evento: text().notNull(),
+      tipo: text().notNull(),
+      crm_card_id: uuid(),
+      corpo: jsonb().notNull(),
+      situacao: text().notNull().default('pendente'),
+      tentativas: integer().notNull().default(0),
+      proxima_tentativa_em: timestamp({ withTimezone: true }).notNull().defaultNow(),
+      ultimo_erro: text(),
+      /** O que o processamento fez, ou por que ignorou. */
+      resultado: jsonb(),
+      recebido_em: criadoEm(),
+      processado_em: instante(),
+    },
+    (t) => [
+      unique('entradas_do_crm_entrega').on(t.clinica_id, t.entrega_id),
+      index('entradas_do_crm_pendentes')
+        .on(t.proxima_tentativa_em, t.id)
+        .where(sql`${t.situacao} = 'pendente'`),
+      index('entradas_do_crm_do_card').on(t.crm_card_id, t.id),
+      check('entradas_do_crm_situacao', emLista(t.situacao, SITUACOES_DE_ENTRADA)),
+      check('entradas_do_crm_tentativas', sql`${t.tentativas} >= 0`),
+    ]
+  )
+  .enableRLS()
+
+/**
+ * A consulta que o CRM marcou fora da agenda (a CRC na Clinicorp, o botão, a IA)
+ * e que ainda não virou consulta aqui: falta o vínculo do dentista, a cadeira, o
+ * procedimento... A recepção encaixa ou descarta. Uma pendente por card.
+ */
+export const vindasDoCrm = agenda
+  .table(
+    'vindas_do_crm',
+    {
+      id: uuid().primaryKey().defaultRandom(),
+      clinica_id: uuid()
+        .notNull()
+        .references(() => clinicas.id),
+      crm_card_id: uuid().notNull(),
+      tipo: text().notNull().default('marcar'),
+      situacao: text().notNull().default('pendente'),
+      /** A unidade da agenda ligada à do card; vazia quando a do CRM não tem par aqui. */
+      unidade_id: uuid(),
+      nome: text(),
+      telefone: text().notNull(),
+      inicio: timestamp({ withTimezone: true }).notNull(),
+      fim: instante(),
+      /** O dentista no prontuário, quando o CRM marcou na Clinicorp. */
+      profissional_no_prontuario_id: text(),
+      profissional_no_prontuario_nome: text(),
+      /** Por que não entrou sozinha: o código do que faltou. */
+      motivo: text(),
+      /** Na remarcação, a consulta ligada ao card; na encaixada, a consulta que nasceu. */
+      consulta_id: uuid(),
+      resolvida_por_tipo: text(),
+      resolvida_por_id: uuid(),
+      resolvida_em: instante(),
+      criado_em: criadoEm(),
+      atualizado_em: atualizadoEm(),
+    },
+    (t) => [
+      unique('vindas_do_crm_da_clinica').on(t.clinica_id, t.id),
+      uniqueIndex('vindas_do_crm_pendente_do_card')
+        .on(t.clinica_id, t.crm_card_id)
+        .where(sql`${t.situacao} = 'pendente'`),
+      index('vindas_do_crm_pendentes').on(t.clinica_id, t.inicio).where(sql`${t.situacao} = 'pendente'`),
+      foreignKey({ name: 'vindas_do_crm_unidade_da_clinica', columns: [t.clinica_id, t.unidade_id], foreignColumns: [unidades.clinica_id, unidades.id] }),
+      foreignKey({ name: 'vindas_do_crm_consulta_da_clinica', columns: [t.clinica_id, t.consulta_id], foreignColumns: [consultas.clinica_id, consultas.id] }),
+      check('vindas_do_crm_tipo', emLista(t.tipo, TIPOS_DE_VINDA)),
+      check('vindas_do_crm_situacao', emLista(t.situacao, SITUACOES_DA_VINDA)),
+      check('vindas_do_crm_resolvida_por', sql`${t.resolvida_por_tipo} is null or ${emLista(t.resolvida_por_tipo, TIPOS_DE_ATOR)}`),
+      check('vindas_do_crm_telefone_e164', sql`${t.telefone} ~ '^\\+[1-9][0-9]{7,14}$'`),
     ]
   )
   .enableRLS()
