@@ -90,7 +90,7 @@ const recusaConsulta = (c: Clinica, x: Consulta, codigo: string, restricao: stri
 describe('migrações', () => {
   it('aplicam do zero e ficam registradas no esquema agenda', async () => {
     const { total } = await um<{ total: number }>(`select count(*)::int as total from agenda.__drizzle_migrations`)
-    expect(total).toBe(3)
+    expect(total).toBe(4)
     const { tabelas } = await um<{ tabelas: number }>(
       `select count(*)::int as tabelas from pg_tables where schemaname = 'agenda' and tablename <> '__drizzle_migrations'`
     )
@@ -287,10 +287,9 @@ describe('cadastros', () => {
     }
   })
 
-  it('a clínica: cadência da lista, antecedência do lembrete e a conta da plataforma sem repetir', async () => {
+  it('a clínica: cadência da lista e a conta da plataforma sem repetir', async () => {
     const c = await montarClinica()
     await recusa(`update agenda.clinicas set cadencia_minutos = 25 where id = $1`, [c.clinica], VIOLA_CHECK, 'clinicas_cadencia')
-    await recusa(`update agenda.clinicas set lembrete_antecedencia_horas = 0 where id = $1`, [c.clinica], VIOLA_CHECK, 'clinicas_antecedencia_do_lembrete')
     const { company_id } = await um<{ company_id: string }>(`select company_id from agenda.clinicas where id = $1`, [c.clinica])
     await recusa(`insert into agenda.clinicas (company_id, nome) values ($1, 'De novo')`, [company_id], VIOLA_UNICO, 'clinicas_company_id_unique')
   })
@@ -345,14 +344,12 @@ describe('histórico e caixa de saída', () => {
     await recusa(`insert into agenda.eventos (clinica_id, tipo, ator_tipo) values ($1, 'consulta_alterada', 'sistema')`, [c.clinica], VIOLA_CHECK, 'eventos_de_alguem')
   })
 
-  it('o tipo do aviso combina com o destino', async () => {
+  it('o aviso vai só ao CRM, com um tipo da lista (a agenda não manda mensagem)', async () => {
     const c = await montarClinica()
     const SQL = `insert into agenda.caixa_de_saida (clinica_id, paciente_id, destino, tipo) values ($1, $2, $3, $4)`
     await pg.query(SQL, [c.clinica, c.maria, 'crm', 'consulta_criada'])
-    await pg.query(SQL, [c.clinica, c.maria, 'plataforma', 'agendar_lembrete'])
     await recusa(SQL, [c.clinica, c.maria, 'crm', 'enviar_confirmacao'], VIOLA_CHECK, 'caixa_de_saida_tipo_do_destino')
-    await recusa(SQL, [c.clinica, c.maria, 'plataforma', 'consulta_criada'], VIOLA_CHECK, 'caixa_de_saida_tipo_do_destino')
-    await recusa(SQL, [c.clinica, c.maria, 'email', 'consulta_criada'], VIOLA_CHECK, 'caixa_de_saida_destino')
+    await recusa(SQL, [c.clinica, c.maria, 'plataforma', 'agendar_lembrete'], VIOLA_CHECK, 'caixa_de_saida_destino')
   })
 })
 

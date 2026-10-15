@@ -1,5 +1,5 @@
 import { ErroDeDominio } from '@/compartilhado/erros'
-import type { AcaoNaPlataforma, AvisoAoCrm, StatusDaConsulta, TipoDeAtor } from '@/compartilhado/vocabulario'
+import type { AvisoAoCrm, StatusDaConsulta, TipoDeAtor } from '@/compartilhado/vocabulario'
 
 // A consulta e o ciclo dela (docs/modelo-de-dados.md, "Pacientes e consultas").
 //
@@ -28,7 +28,6 @@ export interface Consulta {
   canceladaEm: Date | null
   motivoCancelamento: string | null
   crmCardId: string | null
-  lembreteMensagemId: string | null
   versao: number
 }
 
@@ -101,52 +100,30 @@ export function exigirRemarcavel(consulta: Consulta): void {
   }
 }
 
-export type Aviso = { destino: 'crm'; tipo: AvisoAoCrm } | { destino: 'plataforma'; tipo: AcaoNaPlataforma; etiqueta?: 'agendou' | 'compareceu' | 'faltou' }
+/**
+ * O aviso ao CRM, que move o card do paciente. A agenda não manda mensagem (fase
+ * 7c): a confirmação e o lembrete saem pelo CRM, pela data do card.
+ */
+export type Aviso = { destino: 'crm'; tipo: AvisoAoCrm }
 
 /**
- * O que a mudança de status precisa avisar ao CRM e fazer na plataforma. O caso de
- * uso tira o que a clínica não configurou (CRM desligado, sem etiqueta, sem
- * telefone). O "compareceu" sai uma vez só: quando o paciente chega, ou quando a
- * consulta é concluída direto.
+ * O que a mudança de status precisa avisar ao CRM. O caso de uso tira o que a
+ * clínica não configurou (CRM desligado, sem telefone). O "compareceu" sai uma vez
+ * só: quando o paciente chega, ou quando a consulta é concluída direto.
  */
 export function avisosDaMudanca(de: StatusDaConsulta, para: StatusDaConsulta): Aviso[] {
-  if (para === 'cancelada') {
-    return [
-      { destino: 'crm', tipo: 'consulta_cancelada' },
-      { destino: 'plataforma', tipo: 'cancelar_lembrete' },
-    ]
-  }
-  if (para === 'faltou') {
-    return [
-      { destino: 'crm', tipo: 'paciente_faltou' },
-      { destino: 'plataforma', tipo: 'etiquetar_contato', etiqueta: 'faltou' },
-    ]
-  }
+  if (para === 'cancelada') return [{ destino: 'crm', tipo: 'consulta_cancelada' }]
+  if (para === 'faltou') return [{ destino: 'crm', tipo: 'paciente_faltou' }]
   const chegou = (para === 'em_atendimento' || para === 'concluida') && (de === 'agendada' || de === 'confirmada')
-  if (chegou) {
-    return [
-      { destino: 'crm', tipo: 'paciente_compareceu' },
-      { destino: 'plataforma', tipo: 'etiquetar_contato', etiqueta: 'compareceu' },
-    ]
-  }
-  return []
+  return chegou ? [{ destino: 'crm', tipo: 'paciente_compareceu' }] : []
 }
 
 export function avisosDoAgendamento(): Aviso[] {
-  return [
-    { destino: 'crm', tipo: 'consulta_criada' },
-    { destino: 'plataforma', tipo: 'enviar_confirmacao' },
-    { destino: 'plataforma', tipo: 'agendar_lembrete' },
-    { destino: 'plataforma', tipo: 'etiquetar_contato', etiqueta: 'agendou' },
-  ]
+  return [{ destino: 'crm', tipo: 'consulta_criada' }]
 }
 
 export function avisosDaRemarcacao(): Aviso[] {
-  return [
-    { destino: 'crm', tipo: 'consulta_remarcada' },
-    { destino: 'plataforma', tipo: 'cancelar_lembrete' },
-    { destino: 'plataforma', tipo: 'agendar_lembrete' },
-  ]
+  return [{ destino: 'crm', tipo: 'consulta_remarcada' }]
 }
 
 const ROTULOS: Record<StatusDaConsulta, string> = {

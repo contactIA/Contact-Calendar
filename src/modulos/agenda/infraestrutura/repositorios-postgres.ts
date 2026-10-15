@@ -81,7 +81,6 @@ function paraConsulta(l: typeof consultas.$inferSelect): Consulta {
     canceladaEm: l.cancelada_em,
     motivoCancelamento: l.motivo_cancelamento,
     crmCardId: l.crm_card_id,
-    lembreteMensagemId: l.lembrete_mensagem_id,
     versao: l.versao,
   }
 }
@@ -119,11 +118,6 @@ export function repositoriosPostgres(db: Banco): Repositorios {
           fusoHorario: c.fuso_horario,
           cadenciaMinutos: c.cadencia_minutos,
           ligadaAoCrm: c.ligada_ao_crm,
-          confirmacaoModeloId: c.confirmacao_modelo_id,
-          lembreteModeloId: c.lembrete_modelo_id,
-          lembreteAntecedenciaHoras: c.lembrete_antecedencia_horas,
-          sincronizarContatos: c.sincronizar_contatos,
-          etiquetas: { agendou: c.etiqueta_agendou_id, compareceu: c.etiqueta_compareceu_id, faltou: c.etiqueta_faltou_id },
           procedimentoDasVindasId: c.procedimento_das_vindas_id,
         }
       },
@@ -307,7 +301,6 @@ export function repositoriosPostgres(db: Banco): Repositorios {
             cancelada_em: c.canceladaEm,
             motivo_cancelamento: c.motivoCancelamento,
             crm_card_id: c.crmCardId,
-            lembrete_mensagem_id: c.lembreteMensagemId,
             versao: c.versao,
           })
         } catch (erro) {
@@ -329,7 +322,7 @@ export function repositoriosPostgres(db: Banco): Repositorios {
               observacoes: c.observacoes,
               cancelada_em: c.canceladaEm,
               motivo_cancelamento: c.motivoCancelamento,
-              // crm_card_id e lembrete_mensagem_id são do worker (fase 7): a tela não os regrava.
+              // crm_card_id é do worker (fase 7): a tela não o regrava.
               versao: sql`${consultas.versao} + 1`,
             })
             .where(and(eq(consultas.clinica_id, c.clinicaId), eq(consultas.id, c.id), eq(consultas.versao, c.versao)))

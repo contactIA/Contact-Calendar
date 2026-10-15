@@ -16,11 +16,18 @@ import { casosDasVindas } from '@/modulos/agenda/aplicacao/vindas'
 import { leiturasDaAgendaPostgres } from '@/modulos/agenda/infraestrutura/leituras-postgres'
 import { unidadeDeTrabalhoPostgres } from '@/modulos/agenda/infraestrutura/repositorios-postgres'
 import { casosDoCrm } from '@/modulos/crm/aplicacao/casos'
+import { casosDaConversa } from '@/modulos/crm/aplicacao/conversa'
 import { casosDaEntradaDoCrm } from '@/modulos/crm/aplicacao/entrada'
 import type { ApiDoCrm, Cifra } from '@/modulos/crm/aplicacao/portas'
 import { apiDoCrmHttp, lerConfiguracaoDoCrm } from '@/modulos/crm/infraestrutura/api-do-crm-http'
 import { caixaDoCrmPostgres } from '@/modulos/crm/infraestrutura/caixa-postgres'
-import { assinadorDoCrm, cifraDoEnv, clinicasNoCrmPostgres, entradasDoCrmPostgres } from '@/modulos/crm/infraestrutura/entrada-postgres'
+import {
+  assinadorDoCrm,
+  cifraDoEnv,
+  clinicasNoCrmPostgres,
+  consultaParaConversaPostgres,
+  entradasDoCrmPostgres,
+} from '@/modulos/crm/infraestrutura/entrada-postgres'
 
 // Raiz de composição (ADR 0001, como no CRM): o único lugar que liga cada porta
 // ao seu adaptador. As rotas da API, as páginas e o worker pedem os casos de uso
@@ -98,6 +105,7 @@ export function montarCasosDeUso({ banco, relogio, gerarId, sessao, apiDoCrm = n
         relogio,
         urlDaAgenda,
       }),
+      ...casosDaConversa({ api: apiDoCrm, agenda, consultaParaConversa: consultaParaConversaPostgres(banco) }),
     },
   }
 }

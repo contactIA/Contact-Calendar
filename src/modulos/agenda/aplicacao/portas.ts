@@ -1,5 +1,5 @@
 import type { Ator } from '@/modulos/acesso/aplicacao/acesso'
-import type { AcaoNaPlataforma, AvisoAoCrm, SituacaoDaVinda, StatusDaConsulta, TipoDeAtor, TipoDeEvento, TipoDeVinda } from '@/compartilhado/vocabulario'
+import type { AvisoAoCrm, SituacaoDaVinda, StatusDaConsulta, TipoDeAtor, TipoDeEvento, TipoDeVinda } from '@/compartilhado/vocabulario'
 import type { Consulta } from '../dominio/consulta'
 import type { Janela } from '../dominio/disponibilidade'
 import type { Paciente } from '../dominio/paciente'
@@ -13,11 +13,6 @@ export interface ClinicaDaAgenda {
   fusoHorario: string
   cadenciaMinutos: number
   ligadaAoCrm: boolean
-  confirmacaoModeloId: string | null
-  lembreteModeloId: string | null
-  lembreteAntecedenciaHoras: number
-  sincronizarContatos: boolean
-  etiquetas: { agendou: string | null; compareceu: string | null; faltou: string | null }
   /** O procedimento da consulta que o CRM marca fora da agenda (fase 7b). */
   procedimentoDasVindasId: string | null
 }
@@ -94,7 +89,9 @@ export type NovoAviso = {
   consultaId?: string | null
   pacienteId?: string | null
   dados: Record<string, unknown>
-} & ({ destino: 'crm'; tipo: AvisoAoCrm } | { destino: 'plataforma'; tipo: AcaoNaPlataforma })
+  destino: 'crm'
+  tipo: AvisoAoCrm
+}
 
 /** Os repositórios, todos presos à mesma transação. */
 export interface Repositorios {

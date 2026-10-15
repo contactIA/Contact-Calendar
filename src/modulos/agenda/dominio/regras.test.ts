@@ -20,7 +20,6 @@ const consulta = (extra: Partial<Consulta> = {}): Consulta => ({
   canceladaEm: null,
   motivoCancelamento: null,
   crmCardId: null,
-  lembreteMensagemId: null,
   versao: 1,
   ...extra,
 })
@@ -69,10 +68,10 @@ describe('o ciclo da consulta', () => {
   })
 
   it('os avisos de cada mudança, com o "compareceu" uma vez só', () => {
-    expect(avisosDaMudanca('agendada', 'cancelada').map((a) => a.tipo)).toEqual(['consulta_cancelada', 'cancelar_lembrete'])
-    expect(avisosDaMudanca('confirmada', 'faltou').map((a) => a.tipo)).toEqual(['paciente_faltou', 'etiquetar_contato'])
-    expect(avisosDaMudanca('agendada', 'em_atendimento').map((a) => a.tipo)).toEqual(['paciente_compareceu', 'etiquetar_contato'])
-    expect(avisosDaMudanca('confirmada', 'concluida').map((a) => a.tipo)).toEqual(['paciente_compareceu', 'etiquetar_contato'])
+    expect(avisosDaMudanca('agendada', 'cancelada').map((a) => a.tipo)).toEqual(['consulta_cancelada'])
+    expect(avisosDaMudanca('confirmada', 'faltou').map((a) => a.tipo)).toEqual(['paciente_faltou'])
+    expect(avisosDaMudanca('agendada', 'em_atendimento').map((a) => a.tipo)).toEqual(['paciente_compareceu'])
+    expect(avisosDaMudanca('confirmada', 'concluida').map((a) => a.tipo)).toEqual(['paciente_compareceu'])
     expect(avisosDaMudanca('em_atendimento', 'concluida')).toEqual([])
     expect(avisosDaMudanca('agendada', 'confirmada')).toEqual([])
   })

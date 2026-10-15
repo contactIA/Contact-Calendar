@@ -38,16 +38,13 @@ export type TipoDeEvento = (typeof TIPOS_DE_EVENTO)[number]
 
 // ── Caixa de saída ───────────────────────────────────────────────────────────
 
-export const DESTINOS_DE_AVISO = ['crm', 'plataforma'] as const
+/** Só o CRM: a agenda não manda mensagem (fase 7c); a confirmação e o lembrete saem pelo CRM, pelo card. */
+export const DESTINOS_DE_AVISO = ['crm'] as const
 export type DestinoDeAviso = (typeof DESTINOS_DE_AVISO)[number]
 
 /** O que a agenda avisa ao CRM, para mover o card do paciente. */
 export const AVISOS_AO_CRM = ['consulta_criada', 'consulta_remarcada', 'consulta_cancelada', 'paciente_faltou', 'paciente_compareceu'] as const
 export type AvisoAoCrm = (typeof AVISOS_AO_CRM)[number]
-
-/** O que a agenda faz na plataforma de mensagens. */
-export const ACOES_NA_PLATAFORMA = ['enviar_confirmacao', 'agendar_lembrete', 'cancelar_lembrete', 'sincronizar_contato', 'etiquetar_contato'] as const
-export type AcaoNaPlataforma = (typeof ACOES_NA_PLATAFORMA)[number]
 
 /** `falhou` é desistir depois das tentativas; `concluido` é entregue ou feito. */
 export const SITUACOES_DE_AVISO = ['pendente', 'concluido', 'falhou'] as const

@@ -117,10 +117,22 @@ const descartar = createRoute({
   responses: { 204: { description: 'Descartada' }, ...erros(...ERROS_COMUNS) },
 })
 
+const conversa = createRoute({
+  method: 'get',
+  path: '/consultas/{id}/conversa',
+  hide: true,
+  tags: ['Consultas'],
+  summary: 'A conversa do paciente na plataforma',
+  description: 'O endereço da conversa do paciente da consulta, que o CRM acha pelo card. Sem conversa, 404 com o código `SEM_CONVERSA`.',
+  request: { params: ParametroId },
+  responses: { 200: json(z.object({ url: z.string() }), 'A conversa'), ...erros(...ERROS_COMUNS, 502, 503) },
+})
+
 const r = novoRoteador()
 r.use('/crm/ligacao', exigirAcesso)
 r.use('/crm/procedimento-das-vindas', exigirAcesso)
 r.use('/crm/unidades', exigirAcesso)
+r.use('/consultas/:id/conversa', exigirAcesso)
 r.use('/vindas', exigirAcesso)
 r.use('/vindas/*', exigirAcesso)
 
@@ -137,6 +149,7 @@ export const rotasDoCrm = r
     await c.var.casos.cadastros.definirProcedimentoDasVindas(c.var.acesso, c.req.valid('json').procedimentoId)
     return c.body(null, 204)
   })
+  .openapi(conversa, async (c) => c.json(await c.var.casos.crm.conversaDaConsulta(c.var.acesso, c.req.valid('param').id), 200))
   .openapi(listarVindas, async (c) => c.json(serializar({ vindas: await c.var.casos.vindas.listar(c.var.acesso) }), 200))
   .openapi(encaixar, async (c) => {
     const { inicio, ...pedido } = c.req.valid('json')

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAnimatedMount } from '@/hooks/useAnimatedMount'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { type Appointment } from '@/hooks/useAppointments'
 import { useEu } from '@/componentes/casca'
+import { api, fraseDoErro } from '@/componentes/cliente/api'
 
 const STATUS_CHIP: Record<string, { label: string; bg: string; color: string }> = {
   scheduled:   { label: 'Agendado',       bg: '#eff6ff', color: '#3b82f6' },
@@ -50,6 +51,31 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
   const { papeis, profissionalId } = useEu().usuario
   const cuidaDaAgenda = papeis.gestor || papeis.recepcao
   const daPessoa = cuidaDaAgenda || (profissionalId !== null && appointment.dentist?.id === profissionalId)
+  const [abrindoConversa, setAbrindoConversa] = useState(false)
+  const [erroDaConversa, setErroDaConversa] = useState('')
+
+  /**
+   * A conversa do paciente na plataforma, que o CRM acha pelo card (fase 7c). A
+   * aba nasce no clique, antes da resposta, para o navegador não barrar a janela.
+   */
+  async function abrirConversa() {
+    const aba = window.open('', '_blank')
+    setAbrindoConversa(true); setErroDaConversa('')
+    try {
+      const { url } = await api.get<{ url: string }>(`/consultas/${appointment.id}/conversa`)
+      if (aba) {
+        aba.opener = null
+        aba.location.href = url
+      } else {
+        window.open(url, '_blank', 'noopener')
+      }
+    } catch (e) {
+      aba?.close()
+      setErroDaConversa(fraseDoErro(e))
+    } finally {
+      setAbrindoConversa(false)
+    }
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -146,8 +172,16 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
             </div>
           )}
 
-          {/* A conversa com o paciente na plataforma volta na fase 7, com a ligação ao CRM. */}
           <div className="flex gap-2">
+            {phone && (
+              <button
+                onClick={abrirConversa}
+                disabled={abrindoConversa}
+                className="flex-1 text-[12px] font-semibold py-2 rounded-xl bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+              >
+                {abrindoConversa ? 'Abrindo...' : 'Abrir conversa'}
+              </button>
+            )}
             {canReschedule && (
               <button
                 onClick={() => { onReschedule(appointment); onClose() }}
@@ -157,6 +191,7 @@ export function AppointmentPopover({ appointment, anchorEl, onClose, onStatusCha
               </button>
             )}
           </div>
+          {erroDaConversa && <p className="text-[11px] text-red-500">{erroDaConversa}</p>}
         </div>
       </div>
     </div>

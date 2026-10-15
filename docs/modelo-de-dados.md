@@ -22,7 +22,7 @@
    - a agenda de um dia ou de uma semana, por unidade e por profissional;
    - achar o paciente pelo telefone (o agente) e pelo nome (a recepção);
    - a próxima consulta do paciente e o histórico dele (Paciente 360);
-   - o que falta entregar ao CRM e à plataforma de mensagens.
+   - o que falta entregar ao CRM (a agenda não manda mensagem: fase 7c).
 2. **Regras que o banco garante sozinho.** O que não pode quebrar fica numa
    restrição do banco, não só no código: dois pedidos ao mesmo tempo não conseguem
    marcar o mesmo horário.
@@ -55,7 +55,7 @@ erDiagram
   cadeiras ||--o{ consultas : "ocupa"
   procedimentos ||--o{ consultas : "faz"
   consultas ||--o{ eventos : "histórico"
-  consultas ||--o{ caixa_de_saida : "avisos ao CRM e à plataforma"
+  consultas ||--o{ caixa_de_saida : "avisos ao CRM"
   clinicas ||--o{ chaves_api : "integrações e IA"
 ```
 
@@ -89,13 +89,13 @@ erDiagram
 | `nome`, `ativa` | | |
 | `fuso_horario` | text | `America/Sao_Paulo` por padrão; os expedientes e os horários livres são calculados nele |
 | `cadencia_minutos` | integer | de quanto em quanto tempo a grade oferece um início: 5, 10, 15, 20, 30 ou 60; padrão 30. A duração vem do procedimento |
-| `token_plataforma_cifrado` | text | o token da API da plataforma, cifrado pelo app com uma chave do `.env` (decisão **D3**) |
-| `remetente` | text | o número que envia a confirmação e o lembrete, só dígitos com o país |
-| `confirmacao_modelo_id`, `confirmacao_modelo_nome` | text | a mensagem que sai na hora de agendar; vazio não envia |
-| `lembrete_modelo_id`, `lembrete_modelo_nome`, `lembrete_antecedencia_horas` | text, text, integer | o lembrete, quando a clínica escolhe que ele sai pela agenda (a escolha mora no CRM); a antecedência vai de 1 hora a 7 dias, padrão 24 |
-| `sincronizar_contatos` | boolean | cria ou atualiza o contato na plataforma ao cadastrar o paciente; padrão sim |
-| `etiqueta_agendou_id`, `etiqueta_compareceu_id`, `etiqueta_faltou_id` | text | a etiqueta que o contato ganha na plataforma em cada status; vazio não etiqueta |
 | `ligada_ao_crm` | boolean | só manda avisos ao CRM quando ligada; padrão não |
+| `crm_webhook_id`, `crm_webhook_segredo_cifrado` | text | o webhook que a agenda cadastra no CRM ao ligar a clínica, e o segredo dele, cifrado (fase 7b) |
+| `procedimento_das_vindas_id` | uuid | o procedimento da consulta que o CRM marca fora da agenda; sem ele, ela espera a recepção |
+
+A agenda não guarda o token da plataforma nem os modelos de mensagem: a
+confirmação e o lembrete saem pelo CRM, pela data do card, e a conversa com o
+paciente o CRM acha pelo card (fase 7c; a migração `0003` tirou as colunas).
 | `criado_em`, `atualizado_em` | | |
 
 **`usuarios`**: as pessoas da clínica que abrem a agenda pelo item de menu, com os
@@ -206,7 +206,6 @@ família usa o mesmo número (decisão **D1**).
 | `criada_por_tipo`, `criada_por_id` | `usuario`, `ia` ou `integracao`, e quem foi |
 | `cancelada_em`, `motivo_cancelamento` | só na cancelada |
 | `crm_card_id` | o card do paciente no CRM, que o worker guarda na primeira entrega |
-| `lembrete_mensagem_id` | a mensagem agendada na plataforma, quando o lembrete sai pela agenda |
 | `versao` | controle de edição simultânea, como o card do CRM |
 | `criado_em`, `atualizado_em` | |
 
@@ -231,27 +230,26 @@ família usa o mesmo número (decisão **D1**).
 | `ator_tipo`, `ator_id` | `usuario`, `ia`, `integracao` ou `sistema`, e quem foi |
 | `ocorrido_em` | |
 
-**`caixa_de_saida`**: o que a agenda precisa avisar ao CRM e fazer na plataforma. O
+**`caixa_de_saida`**: o que a agenda precisa avisar ao CRM. O
 caso de uso grava o aviso **na mesma transação** da consulta, e o worker entrega,
 com novas tentativas. Se a consulta foi gravada, o aviso sai.
 
 | Coluna | Observação |
 |---|---|
 | `id` | sequencial: a ordem de entrega |
-| `destino` | `crm` ou `plataforma` |
-| `tipo` | no CRM: `consulta_criada`, `consulta_remarcada`, `consulta_cancelada`, `paciente_faltou`, `paciente_compareceu`. Na plataforma: `enviar_confirmacao`, `agendar_lembrete`, `cancelar_lembrete`, `sincronizar_contato`, `etiquetar_contato` |
+| `destino` | `crm` (o único desde a fase 7c) |
+| `tipo` | `consulta_criada`, `consulta_remarcada`, `consulta_cancelada`, `paciente_faltou`, `paciente_compareceu` |
 | `consulta_id`, `paciente_id` | |
 | `dados` | o que a entrega precisa, copiado na hora (telefone, nome, data, unidade) |
 | `situacao` | `pendente`, `concluido` ou `falhou` (desistiu depois das tentativas) |
 | `tentativas`, `proxima_tentativa_em`, `ultimo_erro` | |
-| `resultado` | o que voltou (o id do card, o id da mensagem) |
+| `resultado` | o que voltou (o id do card, ou por que a entrega não mexeu nele) |
 | `criado_em`, `concluido_em` | |
 
 - **Ordem por consulta:** o worker só entrega o próximo aviso de uma consulta
   depois que o anterior terminou. Uma consulta criada e cancelada logo depois chega
   ao CRM nessa ordem.
-- **Repetir não estraga:** a API do CRM ignora o movimento repetido, e o lembrete
-  tem um só por consulta.
+- **Repetir não estraga:** a API do CRM ignora o movimento repetido.
 - Substitui os efeitos que hoje rodam soltos depois da resposta e se perdem quando
   algo cai no meio.
 
@@ -284,6 +282,6 @@ Aprovadas como recomendadas.
 |---|---|---|
 | **D1** | O telefone do paciente é único na clínica (como hoje), ou vários pacientes podem ter o mesmo número? | **Vários.** A mãe marca para o filho com o número dela, e hoje isso grava a consulta no cadastro da mãe. Com vários, o agente confere pelo nome e pergunta quando houver dúvida. |
 | **D2** | Especialidades numa lista da clínica, ou texto livre como hoje? | **Lista.** O filtro "o procedimento exige especialidade" depende do texto bater igual. |
-| **D3** | O token da plataforma: uma cópia cifrada na agenda, ou esperar o cadastro único (Etapa 15), que hoje deixa a agenda de fora? | **Cópia cifrada agora**, trocada pelo cadastro único quando ele incluir a agenda. |
+| **D3** | O token da plataforma: uma cópia cifrada na agenda, ou esperar o cadastro único (Etapa 15), que hoje deixa a agenda de fora? | ~~Cópia cifrada agora~~. **Superada na fase 7c (2026-10-15):** a agenda não manda mensagem nem guarda o token; o CRM manda o lembrete e acha a conversa. |
 | **D4** | A chamada ao CRM: uma chave da agenda (tipo integração) que alcança as clínicas dela, no `.env`, com o `X-Clinica`; ou uma chave por clínica no banco? | **Uma chave da agenda**, com escopo nas clínicas que usam a agenda. Menos coisa para configurar em cada clínica. |
 | **D5** | O banco recusa o mesmo paciente em duas consultas ao mesmo tempo? | **Sim.** Hoje nada impede. |

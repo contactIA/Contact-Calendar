@@ -181,7 +181,7 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     return cadeiras.map((c) => ({ id: c.id, ocupacoes: ocupacoes.get(c.id) ?? [] }))
   }
 
-  /** O que cabe enfileirar para o CRM e a plataforma, com o que a clínica configurou. */
+  /** O que cabe enfileirar para o CRM: com a clínica ligada, o telefone do paciente e sem ter vindo do próprio CRM. */
   function avisosConfigurados(
     acesso: Acesso,
     avisos: Aviso[],
@@ -205,23 +205,8 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
       procedimento: contexto.procedimentoNome,
       unidadeCrmId: contexto.unidade.crmUnidadeId,
     }
-    const enfileirar: NovoAviso[] = []
-    for (const aviso of avisos) {
-      if (aviso.destino === 'crm') {
-        if (clinica.ligadaAoCrm && !vemDoCrm(acesso)) enfileirar.push({ ...base, destino: 'crm', tipo: aviso.tipo, dados })
-        continue
-      }
-      if (aviso.tipo === 'enviar_confirmacao' && !clinica.confirmacaoModeloId) continue
-      if ((aviso.tipo === 'agendar_lembrete' || aviso.tipo === 'cancelar_lembrete') && !clinica.lembreteModeloId) continue
-      if (aviso.tipo === 'etiquetar_contato') {
-        const etiquetaId = aviso.etiqueta ? clinica.etiquetas[aviso.etiqueta] : null
-        if (!etiquetaId) continue
-        enfileirar.push({ ...base, destino: 'plataforma', tipo: aviso.tipo, dados: { ...dados, etiquetaId } })
-        continue
-      }
-      enfileirar.push({ ...base, destino: 'plataforma', tipo: aviso.tipo, dados })
-    }
-    return enfileirar
+    if (!clinica.ligadaAoCrm || vemDoCrm(acesso)) return []
+    return avisos.map((aviso) => ({ ...base, destino: aviso.destino, tipo: aviso.tipo, dados }))
   }
 
   async function contextoDosAvisos(r: Repositorios, acesso: Acesso, consulta: Consulta) {
@@ -257,11 +242,6 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
     await r.historico.registrar([
       { clinicaId: clinica.id, pacienteId: paciente.id, tipo: 'paciente_criado', dados: { nome: paciente.nome }, ator: atorDo(acesso), ocorridoEm: agora },
     ])
-    if (telefone && clinica.sincronizarContatos) {
-      await r.caixa.enfileirar([
-        { clinicaId: clinica.id, pacienteId: paciente.id, destino: 'plataforma', tipo: 'sincronizar_contato', dados: { telefone, nome: paciente.nome } },
-      ], agora)
-    }
     return paciente
   }
 
@@ -520,7 +500,6 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
           canceladaEm: null,
           motivoCancelamento: null,
           crmCardId: vemDoCrm(acesso) ? (pedido.crmCardId ?? null) : null,
-          lembreteMensagemId: null,
           versao: 1,
         }
         await r.consultas.inserir(consulta)
@@ -659,11 +638,6 @@ export function casosDaAgenda({ uow, leituras, relogio, gerarId = () => crypto.r
             ocorridoEm: agora,
           },
         ])
-        if (novo.telefone && clinica.sincronizarContatos && (mudou.includes('nome') || mudou.includes('telefone'))) {
-          await r.caixa.enfileirar([
-            { clinicaId: clinica.id, pacienteId: novo.id, destino: 'plataforma', tipo: 'sincronizar_contato', dados: { telefone: novo.telefone, nome: novo.nome } },
-          ], agora)
-        }
         return novo
       })
     },

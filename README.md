@@ -29,7 +29,8 @@ flowchart TD
     AI -->|chave da API + X-Account-ID| API
     R -->|item de menu da plataforma| API
     API -->|supabase-js com service_role| DB
-    API -->|confirmação, lembrete, etiquetas| H
+    API -->|o card do paciente| CRM["CRM ContactIA"]
+    CRM -->|confirmação, lembrete| H
 ```
 
 - **Um app Next.js 16** (App Router, React 19, TypeScript, Tailwind 4, Radix, zod),
@@ -53,9 +54,9 @@ flowchart TD
   encaixa a consulta sozinho quando o dentista, a unidade e o procedimento das
   vindas estão ligados; senão, ela espera na lista "Vindas do CRM". A consulta
   ligada ao card acompanha a data, o cancelamento, a falta e o comparecimento.
-- **Mensagens:** as rotas antigas mandavam a confirmação e o lembrete e
-  etiquetavam o contato na plataforma. Elas saíram em outubro de 2026; as
-  mensagens voltam na fase 7, pela caixa de saída e pelo CRM.
+- **Mensagens:** a agenda não manda mensagem. A confirmação e o lembrete saem pelo
+  CRM, pela data do card, e o "Abrir conversa" da consulta pede ao CRM o endereço
+  da conversa do paciente (fase 7c).
 
 ## Acesso
 
@@ -157,9 +158,8 @@ profissional, o procedimento e a cadeira, ou descarta.
 Configurações tem as abas Geral (cadência da grade, a ligação com o CRM e o
 procedimento das consultas vindas do CRM), Unidades (com a unidade no CRM), Cadeiras,
 Especialidades, Procedimentos, Profissionais (unidades com a prioridade,
-especialidades e a semana de horários) e Chaves. A integração com a plataforma de
-mensagens volta na fase 7c. Na aba Profissionais, o "dentista no prontuário" liga o
-profissional ao dentista da Clinicorp.
+especialidades e a semana de horários) e Chaves. Na aba Profissionais, o "dentista
+no prontuário" liga o profissional ao dentista da Clinicorp.
 
 **Paciente 360**: na API nova, `GET /api/v1/pacientes/{id}` traz o cadastro, as
 consultas e a última visita.

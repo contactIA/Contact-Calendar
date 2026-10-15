@@ -93,7 +93,7 @@ describe('horários livres', () => {
 })
 
 describe('agendar', () => {
-  it('grava a consulta, cadastra o paciente novo e enfileira os avisos', async () => {
+  it('grava a consulta, cadastra o paciente novo e enfileira o aviso ao CRM', async () => {
     const c = await montarClinicaDaAgenda(pg)
     const { consulta, paciente } = await agendar(c)
     expect(consulta).toMatchObject({ status: 'agendada', cadeiraId: c.consultorio1, criadaPorTipo: 'usuario', versao: 1 })
@@ -102,12 +102,12 @@ describe('agendar', () => {
 
     expect((await eventosDa(consulta.id)).map((e) => e.tipo)).toEqual(['consulta_criada'])
     const fila = await avisos(consulta.id)
-    expect(fila.map((a) => `${a.destino}:${a.tipo}`)).toEqual(['crm:consulta_criada', 'plataforma:enviar_confirmacao', 'plataforma:agendar_lembrete', 'plataforma:etiquetar_contato'])
+    expect(fila.map((a) => `${a.destino}:${a.tipo}`)).toEqual(['crm:consulta_criada'])
     expect(fila[0]!.dados).toMatchObject({ telefone: '+5562999990000', nome: 'Maria Souza', profissional: 'Dra. Ana', procedimento: 'Avaliação' })
-    expect(fila[3]!.dados).toMatchObject({ etiquetaId: 'etiqueta-agendou' })
 
+    // A agenda não manda mensagem (fase 7c): cadastrar o paciente não gera aviso.
     const { rows } = await pg.query<{ tipo: string }>(`select tipo from agenda.caixa_de_saida where paciente_id = $1 and consulta_id is null`, [paciente.id])
-    expect(rows.map((r) => r.tipo)).toEqual(['sincronizar_contato'])
+    expect(rows).toEqual([])
   })
 
   it('a clínica desligada do CRM não manda aviso ao CRM', async () => {
@@ -204,7 +204,7 @@ describe('remarcar', () => {
     expect(remarcada).toMatchObject({ status: 'agendada', versao: 3 })
     expect(horaDe(remarcada.inicio)).toBe('15:00')
     expect((await eventosDa(consulta.id)).map((e) => e.tipo)).toEqual(['consulta_criada', 'status_mudou', 'consulta_remarcada'])
-    expect((await avisos(consulta.id)).slice(-3).map((a) => a.tipo)).toEqual(['consulta_remarcada', 'cancelar_lembrete', 'agendar_lembrete'])
+    expect((await avisos(consulta.id)).slice(-1).map((a) => a.tipo)).toEqual(['consulta_remarcada'])
   })
 
   it('não remarca para cima de si mesma por engano, e a versão velha é recusada', async () => {
@@ -245,12 +245,12 @@ describe('mudar o status', () => {
     expect(await codigoDoErro(casos.mudarStatus(c.dentistaAna, consulta.id, { status: 'em_atendimento' }))).toBe('CONSULTA_NAO_ENCONTRADA')
   })
 
-  it('a falta avisa o CRM e etiqueta o contato', async () => {
+  it('a falta avisa o CRM', async () => {
     const c = await montarClinicaDaAgenda(pg)
     const { consulta } = await agendar(c)
     await casos.mudarStatus(c.recepcao, consulta.id, { status: 'faltou' })
     const fila = await avisos(consulta.id)
-    expect(fila.slice(-2).map((a) => `${a.tipo}:${a.dados.etiquetaId ?? ''}`)).toEqual(['paciente_faltou:', 'etiquetar_contato:etiqueta-faltou'])
+    expect(fila.slice(-1).map((a) => a.tipo)).toEqual(['paciente_faltou'])
   })
 
   it('a chave do agente não marca falta', async () => {

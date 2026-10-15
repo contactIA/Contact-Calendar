@@ -21,7 +21,6 @@ import {
 } from 'drizzle-orm/pg-core'
 // Caminho relativo de propósito: o carregador do drizzle-kit não resolve o "@/".
 import {
-  ACOES_NA_PLATAFORMA,
   AVISOS_AO_CRM,
   CADENCIAS_DA_GRADE,
   DESTINOS_DE_AVISO,
@@ -83,21 +82,6 @@ export const clinicas = agenda
       fuso_horario: text().notNull().default('America/Sao_Paulo'),
       /** De quanto em quanto tempo a grade oferece um início. A duração vem do procedimento. */
       cadencia_minutos: integer().notNull().default(30),
-      /** Token da API da plataforma, cifrado pelo app com uma chave do .env. */
-      token_plataforma_cifrado: text(),
-      /** O número que envia a confirmação e o lembrete, só dígitos com o país. */
-      remetente: text(),
-      confirmacao_modelo_id: text(),
-      confirmacao_modelo_nome: text(),
-      /** O lembrete, quando a clínica escolhe que ele sai pela agenda (a escolha mora no CRM). */
-      lembrete_modelo_id: text(),
-      lembrete_modelo_nome: text(),
-      lembrete_antecedencia_horas: integer().notNull().default(24),
-      sincronizar_contatos: boolean().notNull().default(true),
-      /** A etiqueta que o contato ganha na plataforma em cada status; vazio não etiqueta. */
-      etiqueta_agendou_id: text(),
-      etiqueta_compareceu_id: text(),
-      etiqueta_faltou_id: text(),
       /** Só manda avisos ao CRM quando ligada. */
       ligada_ao_crm: boolean().notNull().default(false),
       /** O webhook que a agenda cadastrou no CRM para esta clínica (fase 7b), e o segredo dele, cifrado. */
@@ -115,7 +99,6 @@ export const clinicas = agenda
     },
     (t) => [
       check('clinicas_cadencia', emLista(t.cadencia_minutos, CADENCIAS_DA_GRADE)),
-      check('clinicas_antecedencia_do_lembrete', sql`${t.lembrete_antecedencia_horas} between 1 and 168`),
     ]
   )
   .enableRLS()
@@ -477,8 +460,6 @@ export const consultas = agenda
       motivo_cancelamento: text(),
       /** O card do paciente no CRM, que o worker guarda na primeira entrega. */
       crm_card_id: uuid(),
-      /** A mensagem agendada na plataforma, quando o lembrete sai pela agenda. */
-      lembrete_mensagem_id: text(),
       /** Controle de edição simultânea, como o card do CRM. */
       versao: integer().notNull().default(1),
       criado_em: criadoEm(),
@@ -579,7 +560,7 @@ export const caixaDeSaida = agenda
       check('caixa_de_saida_destino', emLista(t.destino, DESTINOS_DE_AVISO)),
       check(
         'caixa_de_saida_tipo_do_destino',
-        sql`(${t.destino} = 'crm' and ${emLista(t.tipo, AVISOS_AO_CRM)}) or (${t.destino} = 'plataforma' and ${emLista(t.tipo, ACOES_NA_PLATAFORMA)})`
+        sql`${t.destino} = 'crm' and ${emLista(t.tipo, AVISOS_AO_CRM)}`
       ),
       check('caixa_de_saida_situacao', emLista(t.situacao, SITUACOES_DE_AVISO)),
       check('caixa_de_saida_tentativas', sql`${t.tentativas} >= 0`),

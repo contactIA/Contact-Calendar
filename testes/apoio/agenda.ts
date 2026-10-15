@@ -6,14 +6,13 @@ import type { Acesso } from '@/modulos/acesso/aplicacao/acesso'
 //   · Dra. Ana (Ortodontia, prioridade 1) e Dr. Bruno (prioridade 2), de segunda a
 //     sexta das 8h às 12h e das 14h às 18h no Centro;
 //   · Avaliação (60 min, qualquer um faz) e Aparelho (60 min, só Ortodontia);
-//   · ligada ao CRM, com confirmação, lembrete e as três etiquetas configuradas;
+//   · ligada ao CRM;
 //   · os acessos da recepção, da Dra. Ana como dentista e da chave do agente de IA.
 
 export async function montarClinicaDaAgenda(pg: PGlite, configuracao: { ligadaAoCrm?: boolean } = {}) {
   const id = async (sql: string, params: unknown[]) => (await pg.query<{ id: string }>(sql + ' returning id', params)).rows[0]!.id
   const clinica = await id(
-    `insert into agenda.clinicas (company_id, nome, ligada_ao_crm, confirmacao_modelo_id, lembrete_modelo_id, etiqueta_agendou_id, etiqueta_compareceu_id, etiqueta_faltou_id)
-     values ($1, 'Clínica Sorriso', $2, 'modelo-confirmacao', 'modelo-lembrete', 'etiqueta-agendou', 'etiqueta-compareceu', 'etiqueta-faltou')`,
+    `insert into agenda.clinicas (company_id, nome, ligada_ao_crm) values ($1, 'Clínica Sorriso', $2)`,
     [crypto.randomUUID(), configuracao.ligadaAoCrm ?? true]
   )
   const centro = await id(`insert into agenda.unidades (clinica_id, nome, crm_unidade_id) values ($1, 'Centro', $2)`, [clinica, crypto.randomUUID()])

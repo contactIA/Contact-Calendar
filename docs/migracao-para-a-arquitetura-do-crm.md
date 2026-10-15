@@ -7,7 +7,7 @@ incremental sem convivência com dados vivos.
 
 ## Onde paramos (2026-10-15)
 
-**Feito:** fases 0 a 6, a saída das rotas antigas e as partes 7a e 7b da fase 7, no ramo
+**Feito:** fases 0 a 7 e a saída das rotas antigas, no ramo
 `arquitetura`. O ramo **não** foi mesclado na `master`, porque a `master` publica na
 Vercel com o código antigo. As migrações do esquema `agenda` não foram aplicadas em
 banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 a 6
@@ -49,6 +49,11 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
 - **O diálogo de agendar do CRM sobre os horários desta agenda** (como já faz com
   a Clinicorp) vira uma fase própria, depois da 7. Até lá, essas consultas entram
   pela lista "Vindas do CRM".
+- **A agenda não manda mensagem.** A confirmação e o lembrete saem pelo CRM, pela
+  data do card que a agenda preenche, e quem sai (o CRM, os Lembretes ou o botão)
+  continua escolhido no setup do CRM. Sem token da plataforma, modelos nem
+  etiquetas na agenda, e sem mudança no CRM. A conversa com o paciente, no popover
+  da consulta, o CRM acha pelo card.
 
 **Decisões pendentes, com a equipe (nesta ordem):**
 
@@ -92,9 +97,10 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
     fica cancelada, com falta ou concluída, e a vinda pendente é descartada.
   - **O que o CRM pediu não volta ao CRM:** a mudança entra pelos casos de uso da
     agenda com o acesso do sistema de origem `crm`, que não grava aviso ao CRM.
-- **7c. Plataforma:** confirmação, lembrete, etiquetas e contato; a escolha do
-  lembrete sincronizada (no CRM, o valor `agenda` e a rota da chave); a aba de
-  integração das configurações e a conversa com o paciente no popover.
+- **7c. Mensagens: feita, reduzida.** Pela decisão de 2026-10-15, a agenda não
+  manda mensagem: saíram os avisos à plataforma e as colunas de token, modelos e
+  etiquetas (migração `0003`). Ficou a conversa com o paciente no popover da
+  consulta, que o CRM acha pelo card (`GET /cards/{id}/atendimento`).
 
 **Atenções:**
 
@@ -116,7 +122,7 @@ banco de verdade. Acompanhamento: Etapa 16 do Project do CRM (#234). As fases 0 
 | 4 | Domínio e casos de uso: horários livres, conflito, prioridade dos profissionais, consultas, pacientes. Os cenários do README viram testes sem banco | feita |
 | 5 | API: rotas da tela e do agente com `createRoute`, documentação em `/api/docs`; os cadastros da clínica (unidades, cadeiras, especialidades, procedimentos, profissionais, expedientes, bloqueios) com os casos de uso deles | feita (ver "Decidido na construção (fase 5)") |
 | 6 | Telas: agenda (dia, semana, lista), pacientes e configurações sobre a API nova, com o login pelo item de menu trazido da fase 8 | feita (ver "Decidido na construção (fase 6)") |
-| 7 | Ligação com o CRM: 7a, a saída (caixa de saída e worker, feita); 7b, a entrada pelos webhooks, com o encaixe automático e a lista "Vindas do CRM"; 7c, a plataforma (confirmação, lembrete com a escolha sincronizada pelo CRM, etiquetas, a aba de integração e a conversa com o paciente na consulta) | médio |
+| 7 | Ligação com o CRM: 7a, a saída (caixa de saída e worker); 7b, a entrada pelos webhooks, com o encaixe automático e a lista "Vindas do CRM"; 7c, a conversa com o paciente pelo CRM (a agenda não manda mensagem) | feita (ver "Decidido na construção (fase 7)") |
 | 7.5 | No CRM, o diálogo de agendar sobre os horários desta agenda, nos moldes da Agenda na Clinicorp (ADR 0015 do CRM) | médio |
 | 8 | Acesso e deploy: quem cadastra os usuários da agenda (e o superadmin, como no CRM), o app no ar em `agenda.contactia.com.br`, item de menu na plataforma | médio |
 | 9 | Corte e documentação: recriar as clínicas reais, desligar a Vercel, pausar o Supabase antigo e publicar a documentação da API no ReadMe | pequeno |
@@ -304,6 +310,14 @@ Na entrada do CRM (7b), em `src/modulos/crm` e `src/modulos/agenda/aplicacao/vin
     chave (aba Unidades), e o dentista no prontuário (aba Profissionais).
 19. **A vinda sem unidade ligada não se encaixa pela tela:** primeiro o gestor liga
     a unidade da agenda à do CRM.
+
+Na conversa com o paciente (7c):
+
+20. **O card da conversa** é o que a consulta guardou na entrega ao CRM; sem ele, o
+    card aberto do telefone do paciente. O dentista só abre a conversa das consultas
+    dele, como vê só a agenda dele.
+21. **A aba abre no clique**, antes da resposta do CRM, para o navegador não barrar a
+    janela; sem conversa, ela fecha e o popover mostra a frase.
 
 ## Decidido com a equipe (2026-10-07)
 

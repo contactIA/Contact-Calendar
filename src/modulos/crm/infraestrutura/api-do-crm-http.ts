@@ -139,6 +139,16 @@ export function apiDoCrmHttp({ url, chave, tempoLimiteMs = 10_000, fetch: buscar
       return { id: r!.id, segredo: r!.segredo }
     },
 
+    async atendimento(companyId, cardId) {
+      try {
+        const r = await pedir<{ url: string }>(companyId, 'GET', `/cards/${encodeURIComponent(cardId)}/atendimento`)
+        return r ? { url: r.url } : null
+      } catch (erro) {
+        if (erro instanceof ErroDoCrm && erro.codigo === 'SEM_CONVERSA') return null
+        throw erro
+      }
+    },
+
     async unidades(companyId) {
       const r = await pedir<{ unidades: { id: string; nome: string; ativa: boolean }[] }>(companyId, 'GET', '/unidades')
       return (r?.unidades ?? []).map(({ id, nome, ativa }) => ({ id, nome, ativa }))
